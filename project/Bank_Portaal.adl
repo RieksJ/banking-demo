@@ -1,0 +1,170 @@
+CONTEXT "Bank_Portaal"
+-- Voor het ondersteunen van een `NieuweContext` moet je
+-- al hetgeen tussen `--#IF NieuweContext` en `--#ENDIF` staat voor de --#IF  kopieren,
+-- en aanpassen aan jouw nieuwe context naam.
+
+POPULATION ifcTitle CONTAINS [ ("UserHome", "Mijn Bank") ]
+POPULATION ifcTitle CONTAINS [ ("AnonHome", "Bank Portaal") ]
+
+--[Home]
+POPULATION IfcText CONTAINS [ "Error - this should not occur" ]
+INTERFACE "Home": "_SESSION"[SESSION]cRud BOX <RAW form>
+      [ "User": sessionIsUser INTERFACE "UserHome"
+      , "Anon": sessionIsAnon INTERFACE "AnonHome"
+      , "Error": (I - (sessionIsUser \/ sessionIsAnon));V;"Error - this should not occur"[IfcText]
+      ]
+
+--[Bankrekeningen in sessions]
+sessionBankrekeningen :: SESSION * Bankrekening -- Bankrekeningen waar de gebruiker in de gegeven context mee mag werken
+sessionBrek :: SESSION * Bankrekening [UNI] -- Bankrekening die de gebruiker in de gegeven context heeft geselecteerd om mee te werken
+
+RULE "Integriteit van `sessionBankrekeningen`": sessionBankrekeningen |- sessionBankrekeningen;brekIsMine
+
+sessionBrekSelected :: SESSION * SESSION [PROP] -- property that sessionBankrekeningen is populated/initialized
+ROLE ExecEngine MAINTAINS "DelPair sessionBrek" -- I-sCtxtIsNone \/ I-sessionIsSwitchingContext
+RULE "DelPair sessionBrek": sessionBrekSelected;sessionBrek |- sessionBankrekeningen
+VIOLATION (TXT "{EX} DelPair;sessionBrek;SESSION;", SRC I, TXT ";Bankrekening;", TGT I)
+
+ROLE ExecEngine MAINTAINS "DelPair sessionBankrekeningen"
+RULE "DelPair sessionBankrekeningen": sessionBrekSelected;sessionBankrekeningen |- (I-sessionIsSwitchingContext);sessionBankrekeningen
+VIOLATION (TXT "{EX} DelPair;sessionBankrekeningen;SESSION;", SRC I, TXT ";Bankrekening;", TGT I)
+
+--[Context State Machine]
+--$ --$Context State Machine - How It WOrks
+-- Every context has its own interface; switching context implies switching the interface.
+-- Also, every context has its own set of `sessionBankrekeningen` that can be focued on (by `sessionBrek`).
+-- To switch to a context/interface, you
+-- 1. populate `sessionSwitchContextReq`, which ensures the current context is broken down, and
+-- 2. also populate `session<NewContext>Req` to indicate which context has to be set up.
+-- You may also populate properties that tell <NewContext> where to start/what to start doing,
+-- e.g. by setting an appropriate PROP-relation on e.g. a Bankrekening.
+-- Relation `sessionIsSwitchingContext` tells you that switching is in progress and `session<NewContext>Req` is to be serviced
+sessionSwitchContextReq   :: SESSION * SESSION [PROP] -- Request to reset the session context.
+sessionIsSwitchingContext :: SESSION * SESSION [PROP] -- Property saying we are in the process of switching contexts
+
+--$Context State Machine - Contexts
+sCtxtIsNone             :: SESSION * SESSION [PROP] -- Property that there is no session context.
+sCtxtIsBrekBeheer       :: SESSION * SESSION [PROP] -- Property that session context = 'BrekBeheer' (beheer van Bankrekeningen)
+sCtxtIsTransacties      :: SESSION * SESSION [PROP] -- Property that session context = 'Transacties'
+sCtxtIsBetaalopdrachten :: SESSION * SESSION [PROP] -- Property that session context = 'Betaalopdrachten'
+sCtxtIsMandaten         :: SESSION * SESSION [PROP] -- Property that session context = 'Mandaten' (mandateren)
+sCtxtIsVAS              :: SESSION * SESSION [PROP] -- Property that session context = 'VAS' (value-added services)
+--#IF NieuweContext
+sCtxtIsNieuweContext    :: SESSION * SESSION [PROP] -- Property that session context = '<NieuweContext>'
+--#ENDIF
+
+--$Context State Machine - Switching Contexts
+ROLE ExecEngine MAINTAINS "Deny sessionSwitchContextReq"
+RULE "Deny sessionSwitchContextReq": sessionSwitchContextReq |- sessionCSMIsInited
+VIOLATION (TXT "{EX} DelPair;sessionSwitchContextReq;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Service sessionSwitchContextReq"
+RULE "Service sessionSwitchContextReq": sessionSwitchContextReq /\ sessionCSMIsInited |- sCtxtIsNone /\ sessionIsSwitchingContext
+VIOLATION (TXT "{EX} DelPair;sessionSwitchContextReq;SESSION;", SRC I, TXT ";SESSION;", TGT I
+-- The 'DelPair' below cannot handle multiple tgt atoms, so we created rules `DelPair sessionBankrekeningen` and
+--        ,TXT "{EX} DelPair;sessionBankrekeningen;SESSION;", SRC I, TXT ";Bankrekening;", TGT sessionBankrekeningen
+          ,TXT "{EX} InsPair;sessionIsSwitchingContext;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sessionBrekSelected;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sCtxtIsNone;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sCtxtIsBrekBeheer;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sCtxtIsTransacties;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sCtxtIsBetaalopdrachten;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sCtxtIsMandaten;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sCtxtIsVAS;SESSION;", SRC I, TXT ";SESSION;", TGT I
+--#IF NieuweContext
+          ,TXT "{EX} DelPair;sCtxtIsNieuweContext;SESSION;", SRC I, TXT ";SESSION;", TGT I
+--#ENDIF
+)
+ROLE ExecEngine MAINTAINS "DelPair sessionIsSwitchingContext"
+RULE "DelPair sessionIsSwitchingContext": sessionIsSwitchingContext |- sCtxtIsNone \/ sessionBankrekeningen;sessionBankrekeningen~
+VIOLATION (TXT "{EX} DelPair;sessionIsSwitchingContext;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+
+--$ Context State Machine - Initialization and De-initialization
+sessionCSMIsInited :: SESSION * SESSION [PROP] -- Property: the session's State Machine is initialized (implies: sessionIsUser)
+ROLE ExecEngine MAINTAINS "De-initialize context state machine in anonymous sessions"
+RULE "De-initialize context state machine in anonymous sessions": sessionIsAnon |- -sessionCSMIsInited
+VIOLATION (TXT "{EX} DelPair;sessionCSMIsInited;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Initialize context state machine in user sessions using default context"
+RULE "Initialize context state machine in user sessions using default context": sessionIsUser |- sessionCSMIsInited
+VIOLATION (TXT "{EX} DelPair;sessionSwitchContextReq;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sessionIsSwitchingContext;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sCtxtIsNone;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sessionCSMIsInited;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sCtxtIsBrekBeheer;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sCtxtIsTransacties;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sCtxtIsBetaalopdrachten;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sCtxtIsMandaten;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sCtxtIsVAS;SESSION;", SRC I, TXT ";SESSION;", TGT I
+--#IF NieuweContext
+          ,TXT "{EX} DelPair;sCtxtIsNieuweContext;SESSION;", SRC I, TXT ";SESSION;", TGT I
+--#ENDIF
+)
+--$ Context State Machine - Default Context
+ROLE ExecEngine MAINTAINS "Request change to default context when CSM is initialized and there is no context"
+RULE "Request change to default context when CSM is initialized and there is no context":
+   sessionCSMIsInited-sessionIsSwitchingContext |- -sCtxtIsNone
+VIOLATION (TXT "{EX} InsPair;sCtxtBrekBeheerReq;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+
+--[UserHome]
+--$ UserHome Buttonbar - can be re-used in other INTERFACES
+POPULATION isInvisible CONTAINS [ ("UserHomeButtonBar", "UserHomeButtonBar") ]
+INTERFACE "UserHomeButtonBar" FOR User: "_SESSION";sessionIsUser cRud BOX <TABLE noHeader>
+   [ "LoginLogout":      I INTERFACE "LoginLogoutButtonBar"
+   , "BrekBeheer":       I INTERFACE "BrekBeheerButtonBar"
+   , "Transacties":      I INTERFACE "TransactiesButtonBar"
+   , "Betaalopdrachten": I INTERFACE "BetaalopdrachtenButtonBar"
+-- , "Services":         I INTERFACE "VASButtonBar"
+   , "Mandateren":       I INTERFACE "MandatenButtonBar"
+--#IF NieuweContext
+   , "NieuweContext": I INTERFACE "NieuweContextButtonBar"
+--#ENDIF
+   ]
+
+--$ Actual UserHome interface
+POPULATION isInvisible CONTAINS [ ("UserHome", "UserHome") ]
+INTERFACE "UserHome" FOR User: "_SESSION";sessionIsUser cRud BOX <RAW form>
+   [ "Ordinary users": I-sessionIsSysAdmin cRud BOX <RAW form>
+      [ "Ctxt:---":              sCtxtIsNone             INTERFACE "BrekBeheer"
+      , "Ctxt:BrekBeheer":       sCtxtIsBrekBeheer       INTERFACE "BrekBeheer" -- Overzicht over beheerde en gemandateerde rekeningen
+      , "Ctxt:Transacties":      sCtxtIsTransacties      INTERFACE "Transacties" -- Transactieoverzicht van geselecteerde rekening
+      , "Ctxt:Betaalopdrachten": sCtxtIsBetaalopdrachten INTERFACE "Betaalopdrachten" -- Betaalopdracht indienen bij geselecteerde rekening
+--    , "Ctxt:VAS":              sCtxtIsVAS              INTERFACE "VAS" -- Overzicht van addtionele services
+      , "Ctxt:Mandaten":         sCtxtIsMandaten         INTERFACE "Mandaten" -- Overzicht van mandaten, en mandateren
+--#IF NieuweContext
+      , "NieuweContext":         sCtxtIsNieuweContext    INTERFACE "NieuweContext"
+--#ENDIF
+      ]
+   , "SysAdmin users": sessionIsSysAdmin INTERFACE "SysAdmin"
+   ]
+--[AnonHome]
+POPULATION isInvisible CONTAINS [ ("AnonHome", "AnonHome") ]
+INTERFACE "AnonHome" FOR Anonymous: {-V[ONE*SESSION];-}"_SESSION";sessionIsAnon cRud BOX <RAW form>
+   [ "Header/Title": V;"AnonHome"[InterfaceMetaData] cRud
+   , "horizontale lijn": TXT "<hr/>"
+   , "Inloggen": I INTERFACE "Generic_NPLogin"
+-- , "Registreren": I-sessionLoginAssist cRud BOX <PROPBUTTON> [ property : sessionIsBrekReg cRUd ]
+   ]
+
+ROLE ExecEngine MAINTAINS "Selecteer bankrekening als er maar 1 mogelijkheid is"
+RULE "Selecteer bankrekening als er maar 1 mogelijkheid is":
+    sessionBankrekeningen - sessionBankrekeningen;-I |- sessionBrek
+VIOLATION (TXT "{EX} InsPair;sessionBrek;SESSION;", SRC I, TXT ";Bankrekening;", TGT I)
+
+INTERFACE "Selecteer Bankrekening" FOR SYSTEM: "_SESSION" /\ sessionBankrekeningen;sessionBankrekeningen~ cRud BOX <RAW table>
+    [ "Selecteren": I cRud BOX <OBJECTDROPDOWN>
+        [ selectfrom: sessionBankrekeningen cRud <BrekOneLineSummary>
+        , setrelation: sessionBrek cRUd
+        , instruction: TXT "Selecteer een bankrekening"
+--      , selectflag: selectEventFlag cRUd -- [PROP]-type relation that toggles when OBJECT is selected
+--      , deselectflag: deselectEventFlag cRUd -- [PROP]-type relation that toggles when NO OBJECT is selected
+        ]
+    , " ": TXT "&nbsp&nbsp"
+    , "Saldo van geselecteerde rekening": sessionBrek cRud BOX <RAW table>
+        [ "Saldo": TXT "Saldo:&nbsp"
+        , "Bedrag": brekSaldo cRud
+        , " ": TXT "&nbsp&nbsp"
+        ]
+    ]
+
+ENDCONTEXT

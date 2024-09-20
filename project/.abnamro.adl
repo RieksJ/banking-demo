@@ -1,0 +1,14 @@
+CONTEXT Bank IN DUTCH
+
+-- `I_Am` is about the `Actor` that this system (i.e. the webserver) is.
+  POPULATION actorRef      CONTAINS [ ("I_Am", "Bank webserver") ]
+  POPULATION ownerRef      CONTAINS [ ("I_Am", "ABN-AMRO") ] -- Naam moet overeenkomen met die uit de excel
+  POPULATION myIssuerURL   CONTAINS [ ("I_Am", "SSI_HOSTNAME_WALLET_PROXY") ]
+  POPULATION myVerifierURL CONTAINS [ ("I_Am", "SSI_HOSTNAME_WALLET_PROXY") ]
+  POPULATION myLogofile    CONTAINS [ ("I_Am", "abnamro.png") ]
+
+  POPULATION myAutoAccRegPref CONTAINS [ ("I_Am","I_Am") ] -- Allow registration of Accounts by users (presenting a credential)
+
+  INCLUDE "Bank.adl"
+
+ENDCONTEXT

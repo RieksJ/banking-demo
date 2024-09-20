@@ -1,0 +1,140 @@
+CONTEXT "Bank - ErfenisRechthebbendeData verwerken"
+{- Een `ErfenisRechthebbendeData` is een datastructuur die de PartyContact gegevens bevat van een partij
+die op een of andere manier met een erfenis te maken heeft, bijv. als erfgenaam of een executeur.
+
+Een credential met daarin zulke gegevens wordt hier ingelezen en als volgt verwerkt:
+- accounts van de overledene worden gedeactiveerd;
+- er wordt een account aangemaakt voor de PartyContact als die dat nog niet had;
+- aan dit account worden rechten toegekend afhankelijk van de rol(len) die hij moet spelen:
+  - begrafenisexecuteur: geen rechten
+  - beheerexecuteur: inzien en overmaak rechten
+  - afwikkelingsbewindvoerder: beheersrechten (en daarmee automatisch ook inzien en overmaak rechten)
+    Als afwikkelingsbewindvoerder kan de partij dus ook gaan mandateren.
+-}
+
+INCLUDE "../APIs/ErfenisRechthebbendeData.api"
+
+--[ErfSHRData in SESSIONs]
+sessionIsErfSHR :: SESSION * SESSION [PROP] -- In de sessie zijn we bezig met het verwerken van een ErfenisRechthebbendeData
+sessionErfSHRData :: SESSION * ErfenisRechthebbendeData [UNI] -- object dat in de sessie wordt ingevuld en verder verwerkt
+
+ROLE ExecEngine MAINTAINS "Als we met een ErfenisRechthebbendeData bezig zijn moet er een bijbehorend databoject zijn"
+RULE "Als we met een ErfenisRechthebbendeData bezig zijn moet er een bijbehorend databoject zijn":
+   sessionIsErfSHR |- sessionErfSHRData;sessionErfSHRData~
+VIOLATION (TXT "{EX} InsAtom;ErfenisRechthebbendeData"
+          ,TXT "{EX} InsPair;sessionErfSHRData;SESSION;", SRC I, TXT ";ErfenisRechthebbendeData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom ErfenisRechthebbendeData"
+RULE "DelAtom ErfenisRechthebbendeData": I |- sessionErfSHRData~;sessionIsErfSHR;sessionErfSHRData \/ erfshrBrek;erfshrBrek~
+VIOLATION (TXT "{EX} DelAtom;ErfenisRechthebbendeData;", SRC I)
+
+ROLE ExecEngine MAINTAINS "We verwerken gegevens alleen voor de rechthebbende die is ingelogd"
+RULE "We verwerken gegevens alleen voor de rechthebbende die is ingelogd":
+   erfshrProcessReq;sessionErfSHRData~;"_SESSION";sessionAccount |- erfshrPartyContactData;pctctAccount
+VIOLATION (TXT "{EX} InsPair;erfshrCancelReq;ErfenisRechthebbendeData;", SRC I, TXT ";ErfenisRechthebbendeData;", SRC I
+          ,TXT "{EX} DelPair;erfshrProcessReq;ErfenisRechthebbendeData;", SRC I, TXT ";ErfenisRechthebbendeData;", SRC I
+          ,TXT "{EX} InsPair;sessionMsgIfcText;SESSION;", SRC V;"_SESSION"[SESSION], TXT ";IfcText;De ingelezen gegevens wijzen u niet aan als rechthebbende."
+)
+
+--[INTERFACE]
+POPULATION isInvisible CONTAINS [ ("VASErfenisRechthebbende", "VASErfenisRechthebbende") ]
+INTERFACE "VASErfenisRechthebbende": sessionIsErfSHR;sessionErfSHRData cRud BOX <FORM hideLabels hideOnNoRecords hideSubOnNoRecords title="Verklaring van Erfrecht inlezen">
+   [ "Ingelezen gegevens": I /\ erfshrCredMD;credmdIsSuccess;erfshrCredMD~ INTERFACE "ErfenisRechthebbendeSamenvatting"
+   , "ButtonBar": I cRud BOX <TABLE hideOnNoRecords noHeader>
+      [ "Verklaring van Erfrecht inlezen": I-erfshrCredMD;credmdIsSuccess;erfshrCredMD~ cRud <ErfenisRechthebbendeCredInlezen>
+      , "OK":  I /\ erfshrCredMD;credmdIsSuccess;erfshrCredMD~ cRud BOX <PROPBUTTON>
+         [ property : erfshrProcessReq cRUd
+         ]
+      , "Annuleren": I cRud BOX <PROPBUTTON>
+         [ property : erfshrCancelReq cRUd
+         ]
+      ]
+   , "Toegekende rechten": erfshrBrek cRud BOX <TABLE hideOnNoRecords title="Uw rechten op de rekening(en) van de overledene">
+      [ "Bankrekening": I cRud BOX <TABLE noHeader>
+         [ "Bankrekening": I cRud <BrekOneLineSummary>
+         ]
+      , "Rechten": I cRud BOX <TABLE noHeader>
+         [ "Inzage": brekInzageAccount;sessionAccount~;"_SESSION";V;"Inzage"[BrekRecht] cRud
+         , "Overmaken": brekOvermaakAccount;sessionAccount~;"_SESSION";V;"Overmaken"[BrekRecht] cRud
+         , "Beheren": brekBeheerAccount;sessionAccount~;"_SESSION";V;"Beheren"[BrekRecht] cRud
+         , "Mandateren": brekMandateerAccount;sessionAccount~;"_SESSION";V;"Mandateren"[BrekRecht] cRud
+         ]
+      ]
+   ]
+
+POPULATION "BrekRecht" CONTAINS [ "Inzage", "Overmaken", "Beheren", "Mandateren" ]
+REPRESENT BrekRecht TYPE ALPHANUMERIC
+
+--[Verwerken van ErfenisRechthebbendeData - betreffende de overledene]
+erfshrProcessReq :: ErfenisRechthebbendeData * ErfenisRechthebbendeData [PROP]
+erfshrCancelReq  :: ErfenisRechthebbendeData * ErfenisRechthebbendeData [PROP]
+
+ROLE ExecEngine MAINTAINS "Service erfshrCancelReq"
+RULE "Service erfshrCancelReq": sessionErfSHRData;erfshrCancelReq |- -V
+VIOLATION (TXT "{EX} DelAtom;ErfenisRechthebbendeData;", SRC I
+          ,TXT "{EX} DelPair;sessionIsErfSHR;SESSION;", SRC I, TXT ";SESSION;", SRC I
+)
+--[Verwerken van ErfenisRechthebbendeData]
+--$ Accounts van de overledene deactiveren
+ROLE ExecEngine MAINTAINS "Erfrecht: Accounts van overledenen worden gedeactiveerd"
+RULE "Erfrecht: Accounts van overledenen worden gedeactiveerd":
+    erfshrProcessReq;erfshrOverlijdenData;ovlNP;I[NatuurlijkPersoon];accActor~
+|-  V[ErfenisRechthebbendeData*Account];(I-accIsActive)
+VIOLATION (TXT "{EX} DelPair;accIsActive;Account;", TGT I, TXT ";Account;", TGT I)
+
+--$ Nagaan of er sprake kan zijn van het toekennen van rechten, en zo nodig Accounts aanmaken
+RULE "Een ErfenisRechthebbendeData geeft alleen rechten als deze betrekking heeft op een rekeninghouder":
+                       -- vvvvvvvvvvvvvvvvvvvvvvvvvvvvv-dit doen we zodat alle Accounts van de overledene ook worden gedeactiveerd
+    erfshrProcessReq;erfshrOverlijdenData;ovlNP;(I[NatuurlijkPersoon]-accActor~;accActor)
+|-  V;brekHouder
+VIOLATION (TXT "{EX} DelAtom;ErfenisRechthebbendeData;", SRC I
+          ,TXT "{EX} InsPair;sessionMsgIfcText;SESSION;", SRC V;"_SESSION"[SESSION]
+          ,TXT ";IfcText;De ingevoerde ErfenisRechthebbendeData heeft geen betrekking op een rekeninghouder van deze bank"
+)
+erfshrBrekHouder :: ErfenisRechthebbendeData * Party [UNI]
+erfshrBrek       :: ErfenisRechthebbendeData * Bankrekening
+ROLE ExecEngine MAINTAINS "InsPair erfshrBrekHouder, erfshrBrek"
+RULE "InsPair erfshrBrekHouder, erfshrBrek": erfshrProcessReq;erfshrOverlijdenData;ovlNP;brekHouder~ |- erfshrBrek
+VIOLATION (TXT "{EX} InsPair;erfshrBrek;ErfenisRechthebbendeData;", SRC I, TXT ";Bankrekening;", TGT I
+          ,TXT "{EX} InsPair;erfshrBrekHouder;ErfenisRechthebbendeData;", SRC I, TXT ";Party;", TGT brekHouder[Bankrekening*Party]
+)
+erfshrAccount :: ErfenisRechthebbendeData * Account -- Accounts die iets met de ErfenisRechthebbendeData van doen hebben
+pctctAccount :: PartyContactData * Account [UNI] -- Account dat is geassocieerd aan het PartyContactData
+ROLE ExecEngine MAINTAINS "Een ErfenisRechthebbendeData moet een Account hebben"
+RULE "Een ErfenisRechthebbendeData moet een Account hebben":
+    erfshrProcessReq;erfshrPartyContactData |- V;(accActor;pctctActor~ /\ accParty;pctctParty~)
+VIOLATION (TXT "{EX} InsAtom;Account"
+          ,TXT "{EX} InsPair;accActor;Account;_NEW;Actor;", TGT pctctActor
+          ,TXT "{EX} InsPair;accParty;Account;_NEW;Party;", TGT pctctParty
+          ,TXT "{EX} InsPair;pctctAccount;PartyContactData;", TGT I, TXT ";Account;_NEW"
+)
+ROLE ExecEngine MAINTAINS "InsPair erfshrAccount"
+RULE "InsPair erfshrAccount": erfshrProcessReq;erfshrPartyContactData;pctctAccount |- erfshrAccount
+VIOLATION (TXT "{EX} InsPair;erfshrAccount;ErfenisRechthebbendeData;", SRC I, TXT ";Account;", TGT I)
+
+--$ Rechten uitdelen aan (Accounts van) executeurs
+brekInzageErfSHRAccount    :: Bankrekening * Account -- Account die mag Inzage op basis van een Erfenisrechthebbende
+brekOvermaakErfSHRAccount  :: Bankrekening * Account -- Account die mag Overmaken op basis van een Erfenisrechthebbende
+brekBeheerErfSHRAccount    :: Bankrekening * Account -- Account die mag Beheer op basis van een Erfenisrechthebbende
+brekMandateerErfSHRAccount :: Bankrekening * Account -- Account die mag Mandateer op basis van een Erfenisrechthebbende
+
+ROLE ExecEngine MAINTAINS "Erfrecht: herroepen van rechten als er geen ErfenisRechthebbendeData is"
+RULE "Erfrecht: herroepen van rechten als er geen ErfenisRechthebbendeData is":
+   brekInzageErfSHRAccount \/ brekOvermaakErfSHRAccount \/ brekBeheerErfSHRAccount
+|- erfshrBrek~;erfshrAccount
+VIOLATION (TXT "{EX} DelPair;brekInzageErfSHRAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I
+          ,TXT "{EX} DelPair;brekOvermaakErfSHRAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I
+          ,TXT "{EX} DelPair;brekBeheerErfSHRAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I
+)
+ROLE ExecEngine MAINTAINS "Erfrecht: Een BeheersExecuteur (2-sterren executeur) krijgt inzage en overmaakrechten"
+RULE "Erfrecht: Een BeheersExecuteur (2-sterren executeur) krijgt inzage en overmaakrechten":
+    erfshrBrek~;(erfshrIsErfgenaam \/ erfshrIsBeheersExecuteur);erfshrAccount |- brekInzageErfSHRAccount /\ brekOvermaakErfSHRAccount
+VIOLATION (TXT "{EX} InsPair;brekInzageErfSHRAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I
+          ,TXT "{EX} InsPair;brekOvermaakErfSHRAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I
+)
+ROLE ExecEngine MAINTAINS "Erfrecht: Een Afwikkelingsbewindvoerder (3-sterren executeur) krijgt beheersrechten"
+RULE "Erfrecht: Een Afwikkelingsbewindvoerder (3-sterren executeur) krijgt beheersrechten":
+    erfshrBrek~;erfshrIsAfwBewindvoerder;erfshrAccount |- brekBeheerErfSHRAccount
+VIOLATION (TXT "{EX} InsPair;brekBeheerErfSHRAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+
+ENDCONTEXT

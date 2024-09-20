@@ -1,0 +1,126 @@
+CONTEXT "Bank_Transacties"
+
+--[Transactie geschiedenis]
+--De geschiedkundige volgorde van transacties wordt bepaald door het moment waarop het saldo van de bankrekening wordt aangepast
+--Deze wordt automatisch bijgehouden zodra de waarde van relatie `xxx` wordt gepopuleerd
+brekTrace      :: Bankrekening * BetaalTransactie [INJ,UNI] -- Latest assignment, which records the current value of the Bankrekening
+trxBrek          :: BetaalTransactie * Bankrekening [UNI,TOT] -- Every BetaalTransactie pertains to a specific Bankrekening
+trxBetaalopdracht:: BetaalTransactie * Betaalopdracht   [UNI] -- the value has been assigned to the BetaalTransactie's Bankrekening
+trxVanAccount    :: BetaalTransactie * Account      [UNI] -- Account die deze transactie heeft ingeschoten
+trxPOT           :: BetaalTransactie * Tijdstip     [UNI] -- the point of time at which the assignment was created
+trxDatum         :: BetaalTransactie * Datum        [UNI] -- De datum waarop de assignment is aangemaakt
+trxVanNaar       :: BetaalTransactie * IfcText      [UNI] -- Van/Naar tekst
+trxAfBij         :: BetaalTransactie * IfcText      [UNI] -- Af/Bij tekst
+trxTegenrekening :: BetaalTransactie * IBAN         [UNI]
+trxAnderePartij  :: BetaalTransactie * PartyRef     [UNI] -- Eigenaar van de tegenrekening
+trxBedrag        :: BetaalTransactie * Bedrag       [UNI,TOT] -- bedrag van de transactie
+trxOmschrijving  :: BetaalTransactie * Tekst        [UNI]
+trxKenmerk       :: BetaalTransactie * Tekst        [UNI]
+trxSaldo         :: BetaalTransactie * Bedrag       [UNI] -- Het saldo van de bankrekening nadat de transactie heeft plaatsgevonden
+trxVolgnr        :: BetaalTransactie * Volgnr       [UNI] -- Volgnummer van de transactie voor de betreffende Bankrekening
+
+REPRESENT Tijdstip TYPE DATETIME
+REPRESENT Volgnr TYPE INTEGER
+
+-- Whenever the Bankrekening to which an BetaalTransactie pertains no longer exists, the BetaalTransactie must be deleted.
+ROLE ExecEngine MAINTAINS "Delete obsolete BetaalTransacties"
+RULE "Delete obsolete BetaalTransacties": I[BetaalTransactie] |- trxBrek;trxBrek~
+VIOLATION (TXT "{EX} DelAtom;BetaalTransactie;", SRC I)
+
+ROLE ExecEngine MAINTAINS "InsPair brekSaldo"
+RULE "InsPair brekSaldo": brekTrace;trxSaldo |- brekSaldo
+VIOLATION (TXT "{EX} InsPair;brekSaldo;Bankrekening;", SRC I, TXT ";Bedrag;", TGT I)
+
+-- Whenever a Bankrekening has a Betaalopdracht, an BetaalTransactie must exist that records the event that made this happen.
+btloIsAfgeschreven :: Betaalopdracht * Betaalopdracht [PROP] -- btloBedrag is afgeschreven van btloVanBrek
+ROLE ExecEngine MAINTAINS "Afschrijvingstransacties bijwerken"
+RULE "Afschrijvingstransacties bijwerken":
+   btloAfschrijfReq;btloVanBrek;brekIsMine |- btloIsAfgeschreven;trxBetaalopdracht~;trxBrek
+VIOLATION (TXT "{EX} InsAtom;BetaalTransactie"
+--IF UseBetaalTransactieHistory
+        ,TXT "{EX} InsPair;trxHasPred;BetaalTransactie;_NEW;BetaalTransactie;", TGT brekTrace
+--ENDIF
+        ,TXT "{EX} InsPair;brekTrace;Bankrekening;", TGT I[Bankrekening], TXT ";BetaalTransactie;_NEW"
+        ,TXT "{EX} InsPair;trxBetaalopdracht;BetaalTransactie;_NEW;Betaalopdracht;", SRC I[Betaalopdracht]
+        ,TXT "{EX} InsPair;trxBrek;BetaalTransactie;_NEW;Bankrekening;", TGT I[Bankrekening]
+        ,TXT "{EX} InsPair;trxVanAccount;BetaalTransactie;_NEW;Account;", SRC btloVanAccount
+        ,TXT "{EX} InsPair;trxPOT;BetaalTransactie;_NEW;Tijdstip;{php}date(DATE_ISO8601)"
+        ,TXT "{EX} InsPair;trxDatum;BetaalTransactie;_NEW;Datum;{php}date(DATE_ISO8601)"
+        ,TXT "{EX} InsPair;trxVanNaar;BetaalTransactie;_NEW;IfcText;Naar"
+        ,TXT "{EX} InsPair;trxAfBij;BetaalTransactie;_NEW;IfcText;Af"
+        ,TXT "{EX} InsPair;trxTegenrekening;BetaalTransactie;_NEW;IBAN;", SRC btloNaarIBAN
+        ,TXT "{EX} InsPair;trxAnderePartij;BetaalTransactie;_NEW;PartyRef;", SRC btloNaarHouderRef
+        ,TXT "{EX} InsPair;trxOmschrijving;BetaalTransactie;_NEW;Tekst;", SRC btloOmschrijving
+        ,TXT "{EX} InsPair;trxKenmerk;BetaalTransactie;_NEW;Tekst;", SRC btloKenmerk
+        ,TXT "{EX} InsPair;trxBedrag;BetaalTransactie;_NEW;Bedrag;-", SRC btloBedrag
+      --   ,TXT "{EX} InsPair;trxSaldo;BetaalTransactie;_NEW;Bedrag;", TGT brekSaldo
+        ,TXT "{EX} InsPair;btloIsAfgeschreven;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", SRC I
+        ,TXT "{EX} DelPair;btloAfschrijfReq;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I
+)
+
+ROLE ExecEngine MAINTAINS "Bijschrijvingstransacties bijwerken"
+RULE "Bijschrijvingstransacties bijwerken":
+   btloBijschrijfReq;btloNaarBrek;brekIsMine |- trxBetaalopdracht~;trxBrek
+VIOLATION (TXT "{EX} InsAtom;BetaalTransactie"
+--IF UseBetaalTransactieHistory
+        ,TXT "{EX} InsPair;trxHasPred;BetaalTransactie;_NEW;BetaalTransactie;", TGT brekTrace
+--ENDIF
+        ,TXT "{EX} InsPair;brekTrace;Bankrekening;", TGT I[Bankrekening], TXT ";BetaalTransactie;_NEW"
+        ,TXT "{EX} InsPair;trxBetaalopdracht;BetaalTransactie;_NEW;Betaalopdracht;", SRC I[Betaalopdracht]
+        ,TXT "{EX} InsPair;trxBrek;BetaalTransactie;_NEW;Bankrekening;", TGT I[Bankrekening]
+        ,TXT "{EX} InsPair;trxPOT;BetaalTransactie;_NEW;Tijdstip;{php}date(DATE_ISO8601)"
+        ,TXT "{EX} InsPair;trxDatum;BetaalTransactie;_NEW;Datum;{php}date(DATE_ISO8601)"
+        ,TXT "{EX} InsPair;trxVanNaar;BetaalTransactie;_NEW;IfcText;Van"
+        ,TXT "{EX} InsPair;trxAfBij;BetaalTransactie;_NEW;IfcText;Bij"
+        ,TXT "{EX} InsPair;trxTegenrekening;BetaalTransactie;_NEW;IBAN;", SRC btloVanIBAN
+        ,TXT "{EX} InsPair;trxAnderePartij;BetaalTransactie;_NEW;PartyRef;", SRC btloVanHouderRef
+        ,TXT "{EX} InsPair;trxOmschrijving;BetaalTransactie;_NEW;Tekst;", SRC btloOmschrijving
+        ,TXT "{EX} InsPair;trxKenmerk;BetaalTransactie;_NEW;Tekst;", SRC btloKenmerk
+        ,TXT "{EX} InsPair;trxBedrag;BetaalTransactie;_NEW;Bedrag;", SRC btloBedrag
+      --   ,TXT "{EX} InsPair;trxSaldo;BetaalTransactie;_NEW;Bedrag;", TGT brekSaldo
+)
+--[Genesis]
+ROLE ExecEngine MAINTAINS "Initialiseer eerste transactie als die niet uit initiele populatie komt"
+RULE "Initialiseer eerste transactie als die niet uit initiele populatie komt":
+   I |- trxBrek~;(I-trxHasPred;trxHasPred~);trxBrek
+VIOLATION (TXT "{EX} InsAtom;BetaalTransactie"
+        ,TXT "{EX} InsPair;trxBedrag;BetaalTransactie;_NEW;Bedrag;0.00"
+        ,TXT "{EX} InsPair;trxSaldo;BetaalTransactie;_NEW;Bedrag;0.00"
+        ,TXT "{EX} InsPair;trxVolgnr;BetaalTransactie;_NEW;Volgnr;0"
+        ,TXT "{EX} InsPair;trxBrek;BetaalTransactie;_NEW;Bankrekening;", TGT I
+        ,TXT "{EX} InsPair;brekTrace;Bankrekening;", TGT I, TXT ";BetaalTransactie;_NEW"
+)
+ROLE ExecEngine MAINTAINS "Initialiseer eerste transactie uit initiele populatie"
+RULE "Initialiseer eerste transactie uit initiele populatie":
+   I - trxHasPred;trxHasPred~  |- trxSaldo;trxSaldo~ /\ trxVolgnr;trxVolgnr~
+VIOLATION (TXT "{EX} InsPair;trxSaldo;BetaalTransactie;", SRC I, TXT ";Bedrag;0.00"
+          ,TXT "{EX} InsPair;trxVolgnr;BetaalTransactie;", SRC I, TXT ";Volgnr;0"
+)
+--[Saldi en volgnummers bijwerken]
+RULE "Elke BetaalTransactie, behalve de eerste, heeft een tegenrekening":
+   I /\ trxHasPred;trxHasPred |- trxTegenrekening;trxTegenrekening~
+
+ROLE ExecEngine MAINTAINS "Doornummeren van transacties"
+RULE "Doornummeren van transacties": I /\ trxHasPred;trxVolgnr;trxVolgnr~;trxHasPred~  |- trxVolgnr;trxVolgnr~
+VIOLATION (TXT "{EX} InsPair;trxVolgnr;BetaalTransactie;", SRC I, TXT ";Volgnr;{php}", TGT trxHasPred;trxVolgnr, TXT "+1")
+
+ROLE ExecEngine MAINTAINS "Nieuw saldo bepalen" -- N.B.: trxBedrag is [UNI,TOT]
+RULE "Nieuw saldo bepalen": I /\ trxHasPred;trxSaldo;trxSaldo~;trxHasPred~  |- trxSaldo;trxSaldo~
+VIOLATION (TXT "{EX} InsPair;trxSaldo;BetaalTransactie;", SRC I
+               ,TXT ";Bedrag;{php}", TGT trxHasPred;trxSaldo, TXT "+", TGT trxBedrag
+)
+--[BetaalTransactie Geschiedenis]--
+--IF UseBetaalTransactieHistory
+trxHasPred :: BetaalTransactie*BetaalTransactie [UNI,INJ,ASY,IRF] -- (Src) BetaalTransactie has (Tgt) BetaalTransactie as its predecessor
+
+RULE "The trace of each Bankrekening starts with an assignment that has no successors": -(brekTrace;trxHasPred~)
+-- RULE "Every assignment has a successor or represents the current value of a Bankrekening": V[ONE*BetaalTransactie];trxHasPred \/ V[ONE*Bankrekening];brekTrace -- Note: the tested BetaalTransactie is the TGT of the rule expression
+RULE "If one assignment precedes another, they affect the same Bankrekening": trxBrek~;trxHasPred;trxBrek |- I
+--ENDIF
+--#IF UseBetaalTransactieHistory_And_LimitHistory
+ROLE ExecEngine MAINTAINS "Limit history size to 2 predecessors" -- i.e.: discard the third predecessor if it exists
+RULE "Limit history size to 2 predecessors": trxHasPred;trxHasPred;trxHasPred |- -V
+VIOLATION (TXT "{EX} DelAtom;BetaalTransactie;", TGT I)
+--#ENDIF
+
+ENDCONTEXT

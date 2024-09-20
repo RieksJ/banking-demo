@@ -1,0 +1,267 @@
+CONTEXT Bank_Debugging
+
+VIEW "ORGID": Organization { "1": TXT "Id=", "2": I } ENDVIEW
+
+--#IFNOT NoMainDevIfc
+-- This is *the* entry point for developers. It should only be compiled for the main application itself.
+-- To allow other applications to provide their own developer's entry point, this section is not compiled by default.
+
+INCLUDE "../SIAMv4/SIAM_Developer.ifc" --# [ "NoMainDevIfc" ]     -- Includes interfaces [SESSION_Dev] and [SIAM_Dev]
+INCLUDE "../Generic/Generic_Developer.ifc" --# [ "NoMainDevIfc" ] -- Includes interface [NatuurlijkPersoon_Dev]
+INCLUDE "../PhysicalAddr/DutchAddr_Developer.ifc" --# [ "NoMainDevIfc" ] -- Includes interface [Addrs_Dev]
+INCLUDE "../KvK/KvK_Developer.ifc" --# [ "NoMainDevIfc" ] -- Includes interface [Ondernemingen_Dev] and [Onderneming_Dev]
+
+POPULATION ifcTitle CONTAINS [ ("[Dev]", "Developer/Debugger Portaal") ]
+INTERFACE "[Dev]": "_SESSION" cRud BOX <RAW form>
+    [ "Header/Title": V;"[Dev]"[InterfaceMetaData] cRud
+    , "Button Bar": I INTERFACE "UserHomeButtonBar"
+    , "horizontale lijn": TXT "<hr/>"
+    , "DEV content": V[SESSION*ONE] cRud BOX <TABS>
+        [ "Banken":  I INTERFACE "[Bank_Dev]"
+        , "SIAMv4":  I INTERFACE "[SIAM_Dev]"
+        , "Generic": I INTERFACE "[Generic_Dev]"
+        , "Addrs":   I INTERFACE "[Addrs_Dev]"
+        ]
+    ]
+--#ENDIF
+
+INTERFACE "[Bank_Dev]": I[ONE] cRud BOX <TABS>
+    [ "Session":          I INTERFACE "[Bank_Session_Dev]"
+    , "AccountRechten":   I INTERFACE "[Bank_AccountRechten_Dev]"
+    , "Banken":           I INTERFACE "[Bank_Banken_Dev]"
+    , "Bankrekeningen":   I INTERFACE "[Bank_Brek_Dev]"
+ -- , "Zakelijk Breks":   I INTERFACE "[Bank_Zrek_Dev]"
+    , "Mandaten":         I INTERFACE "[Bank_Mandaten_Dev]"
+    , "Betaalopdrachten": I INTERFACE "[Bank_Betaalopdrachten_Dev]"
+    , "Transacties":      I INTERFACE "[Bank_Transacties_Dev]"
+ -- , "Overl. Verkl.":    I INTERFACE "[Bank_VerklaringVanExecuteleData_Dev]"
+ -- , "ErfenisSHR":       I INTERFACE "[ErfenisRechthebbende_DEV]"
+    ]
+
+INTERFACE "[Bank_Session_Dev]": V[ONE*SESSION];"_SESSION" cRud BOX <FORM>
+    [ "Vandaag": I cRud BOX <TABLE>
+        [ "Datum": sessionToday cRUd
+        , "Account": sessionAccount cRud <AccountTwoLineSummary>
+        , "I_Am": V;I[I_Am] cRud <ActorAndOwner>
+        , "Msg test": sessionMsgIfcText cRUd
+        , "Msg EraseReq": sessionMsgEraseReq cRud
+        ]
+    , "Contexts": I cRud BOX <TABLE>
+        [ "sessionSwitchContextReq": sessionSwitchContextReq cRUd
+        , "sCtxtIsNone": sCtxtIsNone cRud
+        , "sCtxtIsBrekBeheer": sCtxtIsBrekBeheer cRud
+        , "sCtxtIsTransacties": sCtxtIsTransacties cRud
+        , "sCtxtIsBetaalopdrachten": sCtxtIsBetaalopdrachten cRud
+        , "sCtxtIsMandaten": sCtxtIsMandaten  cRud
+        ]
+    , "Transacties/Betaalopdrachten": I cRud BOX <TABLE>
+        [ "sessionBrek": sessionBrek cRud <BrekOneLineSummary>
+        , "sessionBankrekeningen": sessionBankrekeningen cRud <BrekOneLineSummary>
+        , "sessionBetaalopdracht": sessionBetaalopdracht cRud
+        ]
+    , "Mandaten": I cRud BOX <TABLE>
+        [ "sessionBrek": sessionBrek cRud <BrekOneLineSummary>
+        , "sessionBankrekeningen": sessionBankrekeningen cRud <BrekOneLineSummary>
+        , "sessionTechMandaat": sessionTechMandaat cRud
+        ]
+    , "BrekBeheer": I cRud BOX <TABLE>
+        [ "sessionBrek": sessionBrek cRud <BrekOneLineSummary>
+        , "sessionBankrekeningen": sessionBankrekeningen cRud <BrekOneLineSummary>
+        , "sessionIsBrekReg": sessionIsBrekReg cRUd
+        , "sessionBrekRegForm": sessionBrekRegForm cRuD
+        ]
+    ]
+
+INTERFACE "[Bank_AccountRechten_Dev]": V[ONE*Account] cRuD BOX <TABLE sortable hideOnNoRecords>
+    [ "Account ID": I cRud <AccountId>
+    , "Account van": I cRud <AccountTwoLineSummary>
+    , "brekOtherBeheerAccount~": brekOtherBeheerAccount~ cRud <BrekTwoLineSummary>
+    , "brekStakeholderAccount~": brekStakeholderAccount~ cRUd <BrekTwoLineSummary>
+    , "brekBeheerAccount~": brekBeheerAccount~ cRud <BrekTwoLineSummary>
+    , "brekInzageAccount~": brekInzageAccount~ cRud <BrekTwoLineSummary>
+    , "brekOvermaakAccount~": brekOvermaakAccount~ cRud <BrekTwoLineSummary>
+    , "brekMandateerAccount~": brekMandateerAccount~ cRud <BrekTwoLineSummary>
+    ]
+
+INTERFACE "[Bank_Banken_Dev]": I[ONE] cRud BOX <FORM>
+    [ "Vandaag": V[ONE*SESSION];"_SESSION" cRud BOX <TABLE>
+        [ "Datum": sessionToday cRUd
+        , "Bankrekeningen": sessionBankrekeningen cRud
+        , "sessionBrek" : sessionBrek cRud
+        , "sessionBetaalopdracht": sessionBetaalopdracht cRud
+        ]
+    , "Banken": V[ONE*Bank] cRuD BOX <TABLE sortable hideOnNoRecords>
+        [ "Id": I[Bank] cRud
+        , "Bank (OrgRef)": orgRef cRud
+        , "Bank code": bankCode cRud
+        , "=Mine": bankIsMine cRud
+        , "Rekeningen": brekBank~ cRud <BrekOneLineSummary>
+        ]
+    ]
+
+INTERFACE "[Bank_Brek_Dev]": I[ONE] cRuD BOX <TABS>
+    [ "Bankrekeningen": V[ONE*Bankrekening] cRuD BOX <TABLE sortable hideOnNoRecords>
+        [ "Bank": brekBank;partyRef cRud
+        , "IBAN": I cRud <BrekTwoLineSummary> -- = "brekIBAN (brekNaam)"
+        , "Houder": brekHouder[Bankrekening*Party] cRud
+        --, "Code": brekIBAN;ibanBankCode
+        --, "Type": brekType cRud
+        --, "Naam": brekNaam cRud
+        , "Saldo": brekSaldo cRud
+        , "KredLim": brekKredLimiet cRUd
+        , "Beh.": brekBeheerAccount cRud
+        , "Inz.": brekInzageAccount cRud
+        , "Ovm.": brekOvermaakAccount cRud
+        , "Mdt.": brekMandateerAccount cRud
+        --, "StartDatum": brekStartDatum cRud
+        , "=Mine": brekIsMine cRud
+        , "=Init": brekIsGeinitialiseerd cRud
+        , "=Clean": brekIsClean cRud
+        , "Trace": brekTrace cRud
+        ]
+    , "Brek proprelaties": V[ONE*Bankrekening] cRuD BOX <TABLE sortable hideOnNoRecords>
+        [ "Bank": brekBank;partyRef cRud
+        , "IBAN": I cRud <BrekTwoLineSummary> -- = "brekIBAN (brekNaam)"
+        , "Houder": brekHouder[Bankrekening*Party] cRud
+        , "=Mine": brekIsMine cRud
+        , "!Mine": brekIsNotMine cRud
+        , "brekNieuweBetaalopdrachtReq": brekNieuweBetaalopdrachtReq cRUd
+        , "brekTransactiesReq": brekTransactiesReq cRUd
+        , "brekValidateIBANReq": brekValidateIBANReq cRUd
+        , "brekNieuwMandaatReq": brekNieuwMandaatReq cRUd
+        ]
+    , "Adresboeken": V[ONE*Bankrekening] cRuD BOX <TABLE sortable hideOnNoRecords>
+        [ "Bankrekening": I cRud <BrekTwoLineSummary>
+        , "Adresboek": abeBrek~ CRuD BOX <TABLE sortable hideOnNoRecords>
+            [ "IBAN": abeIBAN cRud
+            , "Tenaamstelling": abeHouderRef cRud
+            , "Rekening-naam": abeNaam cRUd
+            ]
+        ]
+    ]
+
+-- INTERFACE "[Bank_Zrek_Dev]": V[ONE*ZakelijkeRekening] cRuD BOX <TABLE sortable hideOnNoRecords>
+--     [ "Bank": brekBank;partyRef cRud
+--     , "IBAN": I cRud <BrekTwoLineSummary>
+--     --, "Code": brekIBAN;ibanBankCode
+--     , "Type": brekType cRud
+--     , "Houder": brekHouder cRud
+--     --, "Naam": brekNaam cRud
+--     , "KvKNummer"   : zrekKvKNummer cRud
+--     , "BTWNummer"   : zrekBTWNummer cRud
+--     , "Handelsnaam" : zrekHandelsnaam cRud
+--     , "Rechtsvorm"  : zrekRechtsvorm cRud
+--     ]
+
+INTERFACE "[Bank_Mandaten_Dev]": I[ONE] cRud BOX <TABS>
+    [ "TechMandaten": V[ONE*TechMandaat] cRud BOX <TABLE sortable hideOnNoRecords>
+        [ "TechMandaat": I cRud
+        , "Bankrekening": tmdBrek cRud <BrekOneLineSummary>
+        , "Mandaatgever": tmdGeverAccount cRud <AccountOneLineSummary>
+        , "Gemandateerde": tmdMandaatAccount cRud <AccountOneLineSummary>
+        , "Committed": tmdIsCommitted cRud
+        , "Actief": tmdIsActief cRUd
+        , "Inzien": tmdVoorInzien cRUd
+        , "Overmaken": tmdVoorOvermaken cRUd
+        , "Mandateren": tmdVoorMandateren cRUd
+        , "DoorMndtrn": tmdIsTeMandateren cRUd
+        ]
+    , "Bankrekening perspectief": V[ONE*Bankrekening]cRud BOX <TABLE sortable hideOnNoRecords>
+        [ "Bankrekening": I cRud <BrekOneLineSummary>
+        , "Beheerder": brekBeheerAccount <AccountTwoLineSummary>
+        , "Gemandateerden": tmdBrek~;tmdMandaatAccount <AccountTwoLineSummary>
+        , "Stakeholders": brekStakeholderAccount <AccountTwoLineSummary>
+        ]
+    ]
+
+POPULATION "IfcText" CONTAINS [ "Ja", "Yes", "Nee", "No" ]
+INTERFACE "[Bank_Betaalopdrachten_Dev]": I[ONE] cRud BOX <TABS>
+    [ "Opdracht": V[ONE*Betaalopdracht] cRuD BOX <TABLE sortable hideOnNoRecords>
+        [ "Id": I cRud
+        , "Bedrag": btloBedrag cRud
+        , "VanIBAN": btloVanIBAN cRud
+        , "VanHouderRef": btloVanHouderRef cRud
+        , "NaarIBAN": btloNaarIBAN cRud
+        , "NaarHouderRef": btloNaarHouderRef cRud
+        , "Omschrijving": btloOmschrijving cRud
+        , "Kenmerk": btloKenmerk cRud
+        , "PlanDatum": btloPlanDatum cRud
+        , "IndienReq": btloSubmitReq cRUd
+        , "Status": btloStatus cRud
+        ]
+    , "Aanvullingen": V[ONE*Betaalopdracht] cRuD BOX <TABLE sortable hideOnNoRecords>
+        [ "Id": I cRud
+        , "VanBrek": btloVanBrek cRud
+        , "V=Mine":  btloVanBrek;brekIsMine cRud
+        , "VanBank": btloVanBank cRud
+        , "NaarBrek": btloNaarBrek cRud
+        , "N=Mine":  btloNaarBrek;brekIsMine cRud
+        , "NaarBank": btloNaarBank cRud
+        , "Status": btloStatus cRud
+        ]
+    , "Statussen": V[ONE*Betaalopdracht] cRuD BOX <TABLE sortable hideOnNoRecords>
+        [ "Id": I cRud
+        , "VanAccount": btloVanAccount cRud
+        , "VanDateTime": btloVanTimeIfcText cRud
+        , "=Cln": btloIsSubmittable cRud
+        , "IndienReq": btloSubmitReq cRUd
+        , "=Ingdnd": btloIsClean cRud
+        , "=Bhndlbr": btloIsBehandelbaar;V;"Ja"[IfcText] \/ btloIsOnbehandelbaar;V;"Nee"[IfcText] cRud
+        , "=Rchtmtg": btloIsRechtmatig;V;"Ja"[IfcText] \/ btloIsOnrechtmatig;V;"Nee"[IfcText] cRud
+        , "=gplnd": btloIsIngepland cRud
+        , "ExecReq": btloUitvoerReq cRUd
+        , "=Gwgrd": btloIsGeweigerd cRud
+        , "=Grsrvrd": btloAfschrijfReq cRud
+        , "=Vltd": btloBijschrijfReq cRud
+        , "SaldoToereikend": btloSaldoIsToereikend cRud
+        , "Status": btloStatus cRud
+        ]
+    , "BetaalTransacties": V[ONE*Betaalopdracht] cRuD BOX <TABLE sortable hideOnNoRecords>
+        [ "Id": I cRud
+        , "Status": btloStatus cRud
+        , "BetaalTransacties": trxBetaalopdracht~ cRud BOX <TABLE sortable hideOnNoRecords>
+        [ "Brek": trxBrek cRud
+        , "Volgnr": trxVolgnr cRud
+        , "Tijd": trxPOT cRud
+        , "V/N": trxVanNaar cRud
+        , "Tegenrek": trxTegenrekening cRud
+        , "T.n.v.": trxAnderePartij cRud
+        , "Kenmerk": trxKenmerk cRud
+        , "Omschrijving": trxOmschrijving cRud
+        , "Bedrag": trxBedrag cRud
+        , "Saldo": trxSaldo cRud
+        ]
+        ]
+    ]
+
+INTERFACE "[Bank_Transacties_Dev]": V[ONE*BetaalTransactie] INTERFACE "[Bank_Transactie_Dev]"
+INTERFACE "[Bank_Transactie_Dev]": I[BetaalTransactie] cRuD BOX <TABLE sortable hideOnNoRecords>
+    [ "Trace": I /\ brekTrace~;brekTrace cRud
+    , "Pred": trxHasPred cRud
+    , "Succ": trxHasPred~ cRud
+    , "Brek": trxBrek cRud <BrekTwoLineSummary>
+    , "Volgnr": trxVolgnr cRud
+    , "BTrx": trxBetaalopdracht cRud
+    , "Tijd": trxPOT cRud
+    , "V/N": trxVanNaar cRud
+    , "Tegenrek": trxTegenrekening cRud
+    , "T.n.v.": trxAnderePartij cRud
+    , "Bedrag": trxBedrag cRud
+    , "Saldo": trxSaldo cRud
+    ]
+
+-- INTERFACE "[Bank_VerklaringVanExecuteleData_Dev]": V[ONE*VerklaringVanExecuteleData] cRuD BOX <TABLE sortable hideOnNoRecords>
+--     [ "Overledene": vvexOverlijdensakteData;ovlakteOverlijdenData;ovlNP cRud
+--     , "Begrafenis executeur": vvexBegrafenisExecuteur INTERFACE "ViewPartyContact"
+--     , "Beheersexecuteur": vvexBeheersExecuteur INTERFACE "ViewPartyContact"
+--     , "Afwikkelingsbewindvoerder": vvexAfwBewindvoerder INTERFACE "ViewPartyContact"
+--     ]
+
+-- INTERFACE "[Bank_VerklaringVanExecutele_Dev]": I[VerklaringVanExecuteleData] cRuD BOX <TABS>
+--     [ "Overledene": vvexOverlijdensakteData;ovlakteOverlijdenData cRud
+--     , "BegrafenisExecuteur": vvexBegrafenisExecuteur INTERFACE "[PartyContactData_Dev]"
+--     , "BeheersExecuteur": vvexBeheersExecuteur INTERFACE "[PartyContactData_Dev]"
+--     , "afwbewindvoerder": vvexAfwBewindvoerder INTERFACE "[PartyContactData_Dev]"
+--     ]
+
+ENDCONTEXT

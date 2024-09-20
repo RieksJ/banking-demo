@@ -1,0 +1,194 @@
+CONTEXT Bank_ZrekRegForm
+-- This is a short version of ZakelijkeRekening, to be used in a proof-of-principle
+
+--[Create/Delete forms]
+sessionZrekRegForm :: SESSION * ZrekRegForm [UNI] -- Only one registration form allowed in any session.
+sessionZrekRegFormReq  :: SESSION * SESSION [PROP] -- Requestor wants to negotiate a new registration
+
+RULE "Als je bent ingelogd kun je alleen een zakelijke rekening aanvragen voor jezelf":
+  sessionAccount~;sessionZrekRegForm;brfNP |- accActor
+
+ROLE ExecEngine MAINTAINS "Create new ZrekRegForm"
+RULE "Create new ZrekRegForm": sessionZrekRegFormReq |- sessionZrekRegForm;sessionZrekRegForm~
+VIOLATION (TXT "{EX} InsAtom;ZrekRegForm"
+          ,TXT "{EX} InsPair;sessionZrekRegForm;SESSION;", SRC I, TXT ";ZrekRegForm;_NEW"
+          ,TXT "{EX} InsPair;zrfHeaderIfcText;ZrekRegForm;_NEW;IfcText;Vul KvK-gegevens in met de SSI-app"
+          ,TXT "{EX} SetNavToOnCommit;/ZakelijkeRekeningAanvraag/_NEW"
+          )
+
+ROLE ExecEngine MAINTAINS "Cancel filling in of ZrekRegForms"
+RULE "Cancel filling in of ZrekRegForms": (I-sessionZrekRegFormReq) |- -(sessionZrekRegForm;sessionZrekRegForm~)
+VIOLATION (TXT "{EX} DelPair;sessionZrekRegForm;SESSION;", SRC I, TXT ";ZrekRegForm;", TGT sessionZrekRegForm
+          ,TXT "{EX} SetNavToOnCommit;/Home"
+          )
+
+ROLE ExecEngine MAINTAINS "Discard orphaned ZrekRegForms"
+RULE "Discard orphaned ZrekRegForms": I[ZrekRegForm] |- V;sessionZrekRegForm \/ V;brekRegForm
+VIOLATION (TXT "{EX} DelAtom;ZrekRegForm;", SRC I[ZrekRegForm])
+
+--[Form Structure]
+INCLUDE "./Bank_BrekRegForm.adl" -- This file deals with populating `brfNP`
+
+CLASSIFY ZrekRegForm ISA BrekRegForm
+zrfKvKNummer       :: ZrekRegForm * KvKNummer           [UNI]
+zrfBTWNummer       :: ZrekRegForm * BTWNummer           [UNI]
+zrfHandelsnaam     :: ZrekRegForm * Handelsnaam               -- Er kunnen meerdere handelsnamen zijn.
+zrfRechtsvorm      :: ZrekRegForm * Rechtsvorm          [UNI]
+zrfStartDatum      :: ZrekRegForm * Datum               [UNI]
+
+zrfHeaderIfcText   :: ZrekRegForm * IfcText [UNI] -- Text die we boven de QR-code laten zien (als-ie er is)
+--[API for importing credentials that fill in the form]
+VIEW ZrekRegForm : ZrekRegForm
+    { "formType": TXT "ZrekRegForm" -- Concept name of the form to be filled in
+    , "formAtom": I -- Form
+    , "proxy": V;myVerifierURL -- URL of the endpoint that accepts the credential
+    , "ifcId": TXT "ZZPerAttestatieToZrekRegForm" -- Interface/API name that will take the credential
+    , "attestationType": TXT "ZZPerAttestatie"
+    , "uploadHint": TXT "Upload KvK Organisatieattestatie" -- for QR popup this is postfixed with " with the SSIF app"
+    } ENDVIEW
+
+--! Labels van onderstaande Input-API moeten matchen met de labels & structuur uit de betreffende uitgifte-API
+zrfVfdID :: ZrekRegForm * VfdID             [INJ,UNI] -- Attestation Identifier
+-- zrfType            :: ZrekRegForm * AttType             [UNI] -- Type of the credential, e.g. 'PersoonsgegevensAttestatie'
+-- zrfIssuer          :: ZrekRegForm * URL                 [UNI] -- URL that issued the Attestation
+-- zrfSummaryText     :: ZrekRegForm * SummaryText         [UNI] -- a text that summarizes what the credential is about
+API "ZZPerAttestatieToZrekRegForm": I[ZrekRegForm] CRud BOX -- NOTE: ZrekRegForm ISA NPForm
+   [ "id" : zrfVfdID CRUd
+   , "kvknummer": zrfKvKNummer CRUd
+   , "btwnummer": zrfBTWNummer CRUd
+   , "persoonsgegevens": npFormBrekRegForm~ CRud BOX -- Note: a `C` would ensure that a new NPForm will (always) be Created.
+      [ "geslachtsnaam" : npFormGeslachtsnaam CRUd
+ --   , "roepnaam" : npFormRoepnaam CRUd
+ --   , "voornaam" : npFormEersteVoornaam CRUd
+      , "voornamen" : npFormVoornamen CRUd
+      , "titel" : npFormTitel CRUd
+      , "geboortedatum" : npFormGeboortedatum CRUd
+      , "geboorteplaats" : npFormGeboorteplaats CRUd
+      , "geboorteland" : npFormGeboorteland CRUd
+      , "geslacht" : npFormGeslacht CRUd
+      ]
+   , "handelsnaam": zrfHandelsnaam CRUd
+   , "rechtsvorm": zrfRechtsvorm CRUd
+   , "startdatum": zrfStartDatum CRUd
+   ]
+
+--[User Interface for filling in forms]
+INTERFACE "KvKGegevens": I[ZrekRegForm] cRud BOX <RAW form>
+    [ "Form": I cRud <ZrekRegForm> BOX <SSIFORM> [ "x": I-I cRud ] --!SSIFORMs require an EXISTING atom!--
+        [ "KvKGegevens": I /\ zrfCredMD;credmdIsSuccess;zrfCredMD~ cRud BOX <FORM> -- Only show data if input is available
+            [ "Handelsnaam" : zrfHandelsnaam cRud
+            , "KvKNummer" : zrfKvKNummer cRud
+            , "BTWNummer" : zrfBTWNummer cRud
+            , "Rechtsvorm" : zrfRechtsvorm cRud
+            , "StartDatum" : zrfStartDatum cRud
+            , "Eigenaar" : brfNP cRud
+            ]
+        , "Headertext": (I-zrfVfdID;zrfVfdID~);zrfHeaderIfcText <STRONG>
+        ]
+    , "ButtonBar": I /\ zrfCredMD;credmdIsSuccess;zrfCredMD~ cRud BOX <TABLE noHeader>
+        [ "Vraag zakelijke rekening aan": I cRud BOX <PROPBUTTON>
+            [ property : zrfProcessReq cRUd
+            , disabled : (I-zrfIsClean) cRud
+            ]
+        , "Annuleer": sessionZrekRegForm~ cRud BOX <PROPBUTTON>
+            [ property : sessionZrekRegFormReq cRUd
+            , disabled : (I-sessionZrekRegFormReq) cRud
+            ]
+        , "Meldingen": zrfFormMsg cRud <STRONG> -- Wordt gepopuleerd aan het eind van dit bestand en door applicaties die dit bestand gebruiken
+        ]
+    ]
+
+POPULATION ifcTitle CONTAINS [ ("ZakelijkeRekeningAanvraag", "Zakelijke Rekening openen (ZZP)") ]
+INTERFACE "ZakelijkeRekeningAanvraag": I[ZrekRegForm] cRud BOX <RAW form>
+    [ "Header/Title": V;"ZakelijkeRekeningAanvraag"[InterfaceMetaData] cRud
+
+    , "Registratieformulier": (I-zrfVfdID;zrfVfdID~) INTERFACE "KvKGegevens"
+    , "Persoon is niet geidentificeerd": I-brfNP;brfNP~ cRud BOX <FORM>
+      [ "Rekening type *" : brfType cRUd
+      ]
+    , "Persoon is wel geidentificeerd": I /\ brfNP;brfNP~ cRud BOX <FORM>
+      [ "Aanvrager *": brfNP cRud <NP_GebPlaatsDatum>
+      , "Rekening type *" : brfType cRUd
+      , "Handelsnaam *" : zrfHandelsnaam cRud
+      , "Rechtsvorm *" : zrfRechtsvorm cRud
+      , "KvKNummer *" : zrfKvKNummer cRud
+      , "BTWNummer *" : zrfBTWNummer cRud
+      ]
+
+    , "Knoppenbalk": I cRud BOX <TABLE noHeader>
+        [ "Vraag zakelijke rekening aan": I cRud BOX <PROPBUTTON>
+            [ property : zrfProcessReq cRUd
+            , disabled : (I-zrfIsClean) cRud
+            ]
+        , "Annuleer": sessionZrekRegForm~ cRud BOX <PROPBUTTON>
+            [ property : sessionZrekRegFormReq cRUd
+            , disabled : (I-sessionZrekRegFormReq) cRud
+            ]
+        ]
+    ]
+
+--[Rules that apply when filling in a form]
+--$ Stuff that may not happen
+
+--$ Default populations
+
+--[Establish whether or not the form is clean - i.e. is ready to be processed]
+zrfIsClean :: ZrekRegForm * ZrekRegForm [PROP]
+-- ** we checken hier nog niet of er al een bankrekening met een dergelijke naam en rechtsvorm bestaat**
+ROLE ExecEngine MAINTAINS "InsPair zrfIsClean"
+RULE "InsPair zrfIsClean":
+   brfIsClean
+   /\ zrfKvKNummer;zrfKvKNummer~
+   /\ zrfBTWNummer;zrfBTWNummer~
+   /\ zrfHandelsnaam;zrfHandelsnaam~
+   /\ zrfRechtsvorm;zrfRechtsvorm~
+|- zrfIsClean
+VIOLATION (TXT "{EX} InsPair;zrfIsClean;ZrekRegForm;", SRC I[ZrekRegForm], TXT ";ZrekRegForm;", TGT I[ZrekRegForm])
+ROLE ExecEngine MAINTAINS "DelPair zrfIsClean"
+RULE "DelPair zrfIsClean":
+   zrfIsClean
+|- brfIsClean
+   /\ zrfKvKNummer;zrfKvKNummer~
+   /\ zrfBTWNummer;zrfBTWNummer~
+   /\ zrfHandelsnaam;zrfHandelsnaam~
+   /\ zrfRechtsvorm;zrfRechtsvorm~
+VIOLATION (TXT "{EX} DelPair;zrfIsClean;ZrekRegForm;", SRC I[ZrekRegForm], TXT ";ZrekRegForm;", TGT I[ZrekRegForm])
+
+--[Create Registration-entry from clean form]
+zrfProcessReq :: ZrekRegForm * ZrekRegForm [PROP]
+RULE "A request for processing ZrekRegForms can only be done on clean forms": zrfProcessReq |- zrfIsClean
+
+ROLE ExecEngine MAINTAINS "Create ZakelijkeRekening from ZrekRegForm"
+RULE "Create ZakelijkeRekening from ZrekRegForm":
+   zrfProcessReq /\ zrfIsClean
+|- (brfNP;brekHouder~ /\ zrfHandelsnaam;zrekHandelsnaam~);I[ZakelijkeRekening];brekRegForm
+VIOLATION (TXT "{EX} InsAtom;ZakelijkeRekening"
+          ,TXT "{EX} InsPair;brekRegForm;Bankrekening;_NEW;BrekRegForm;", SRC I[BrekRegForm]
+          ,TXT "{EX} InsPair;brekType;Bankrekening;_NEW;BrekType;", SRC brfType
+          ,TXT "{EX} InsPair;brekBank;Bankrekening;_NEW;Bank;", TGT V[BrekRegForm*I_Am];isOwnedBy;I[Bank]
+          ,TXT "{EX} TriggerService;BrekInitializer"  -- Genereer unieke IBAN
+          ,TXT "{EX} InsPair;brekHouder;Bankrekening;_NEW;Party;", SRC brfNP
+          ,TXT "{EX} InsPair;personPhoneNr;Person;", SRC brfNP ,TXT ";PhoneNr;", SRC brfPhoneNr
+          ,TXT "{EX} InsPair;personEmailAddr;Person;", SRC brfNP ,TXT ";EmailAddr;", SRC brfEmailAddr
+          ,TXT "{EX} InsPair;personHomeAddr;Person;", SRC brfNP ,TXT ";DutchAddr;", SRC brfHomeAddr
+          ,TXT "{EX} TriggerService;BrekAccountGenerator" -- zie file "Bank_SIAMv4_Extensions.adl"
+          ,TXT "{EX} InsPair;zrekKvKNummer;ZakelijkeRekening;_NEW;KvKNummer;", TGT zrfKvKNummer
+          ,TXT "{EX} InsPair;zrekBTWNummer;ZakelijkeRekening;_NEW;BTWNummer;", TGT zrfBTWNummer
+          ,TXT "{EX} InsPair;zrekHandelsnaam;ZakelijkeRekening;_NEW;Handelsnaam;", TGT zrfHandelsnaam
+          ,TXT "{EX} InsPair;zrekRechtsvorm;ZakelijkeRekening;_NEW;Rechtsvorm;", TGT zrfRechtsvorm
+          ,TXT "{EX} InsPair;zrekStartDatum;ZakelijkeRekening;_NEW;Datum;", TGT zrfStartDatum
+          )
+
+--[Registration is completed]
+ROLE ExecEngine MAINTAINS "Registration of ZrekRegForm is completed" -- note that 'brekIsClean' implies that NP has an Account
+RULE "Registration of ZrekRegForm is completed":
+    I[ZrekRegForm] /\ brekRegForm~;zrekIsClean;brekRegForm |- -zrfProcessReq
+VIOLATION (TXT "{EX} DelPair;zrfProcessReq;ZrekRegForm;", SRC I, TXT ";ZrekRegForm;", SRC I
+          ,TXT "{EX} InsPair;accAutoLoginReq;Account;", SRC brfNP;accActor~, TXT ";Account;", SRC brfNP;accActor~
+          ,TXT "{EX} SetNavToOnCommit;/Home"
+          )
+
+--[Foutmeldingen bij invullen] -- De applicatie kan deze naar believen aanvullen
+zrfFormMsg :: ZrekRegForm * IfcText
+
+ENDCONTEXT

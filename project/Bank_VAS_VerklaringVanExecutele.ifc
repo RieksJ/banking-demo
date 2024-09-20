@@ -1,0 +1,133 @@
+CONTEXT "Bank - VerklaringVanExecuteleData verwerken"
+{- Een `VerklaringVanExecuteleData` is een datastructuur met daarin:
+ - een overlijdensakte (naam+adres overledene, plaats+tijd overlijden, natuurlijke dood, doodsoorzaak, slottekst)
+ - executeur-rollen (begrafenisexecuteur, beheerexecuteur, afwikkelingsbewindvoerder) met daarin een (of meer) PartyContacts
+   van partijen die met het uitvoeren van de betreffende rol zijn belast
+
+Een credential met daarin zulke gegevens wordt hier ingelezen en als volgt verwerkt:
+- accounts van de overledene worden gedeactiveerd;
+- er wordt een account aangemaakt voor elke PartyContact die dat nog niet had;
+- aan de betreffence accounts worden rechten voor het inzien, overmaken of beheren van de bankrekeningen van de overledene gekoppeld:
+  - begrafenisexecuteur: geen rechten
+  - beheerexecuteur: inzien en overmaak rechten
+  - afwikkelingsbewindvoerder: beheersrechten (en daarmee automatisch ook inzien en overmaak rechten)
+    Een afwikkelingsbewindvoerder kan dus ook gaan mandateren.
+-}
+INCLUDE "../APIs/VerklaringVanExecuteleData.api"
+
+--[VvExData in SESSIONs]
+sessionIsVvEx :: SESSION * SESSION [PROP] -- In de sessie zijn we bezig met het verwerken van een verklaring van erfrecht
+sessionVvExData :: SESSION * VerklaringVanExecuteleData [UNI] -- object dat in de sessie wordt ingevuld en verder verwerkt
+
+ROLE ExecEngine MAINTAINS "Als we met een VerklaringVanExecuteleData bezig zijn moet er een bijbehorend databoject zijn"
+RULE "Als we met een VerklaringVanExecuteleData bezig zijn moet er een bijbehorend databoject zijn":
+   sessionIsVvEx |- sessionVvExData;sessionVvExData~
+VIOLATION (TXT "{EX} InsAtom;VerklaringVanExecuteleData"
+          ,TXT "{EX} InsPair;sessionVvExData;SESSION;", SRC I, TXT ";VerklaringVanExecuteleData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom VerklaringVanExecuteleData"
+RULE "DelAtom VerklaringVanExecuteleData": I |- sessionVvExData~;sessionIsVvEx;sessionVvExData \/ vvexBrek;vvexBrek~
+VIOLATION (TXT "{EX} DelAtom;VerklaringVanExecuteleData;", SRC I)
+
+ROLE ExecEngine MAINTAINS "We verwerken gegevens alleen voor de VerklaringVanExecuteleData als een belanghebbende is ingelogd"
+RULE "We verwerken gegevens alleen voor de VerklaringVanExecuteleData als een belanghebbende is ingelogd":
+   vvexProcessReq;sessionVvExData~;"_SESSION";sessionAccount |- vvexAccounts
+VIOLATION (TXT "{EX} InsPair;vvexCancelReq;VerklaringVanExecuteleData;", SRC I, TXT ";VerklaringVanExecuteleData;", SRC I
+          ,TXT "{EX} DelPair;vvexProcessReq;VerklaringVanExecuteleData;", SRC I, TXT ";VerklaringVanExecuteleData;", SRC I
+          ,TXT "{EX} InsPair;sessionMsgIfcText;SESSION;", SRC V;"_SESSION"[SESSION], TXT ";IfcText;De ingelezen gegevens wijzen u niet aan als rechthebbende."
+)
+
+--[INTERFACE]
+POPULATION isInvisible CONTAINS [ ("VerklaringVanExecutele", "VerklaringVanExecutele") ]
+INTERFACE "VerklaringVanExecutele": sessionIsVvEx;sessionVvExData cRud BOX <FORM hideLabels hideOnNoRecords hideSubOnNoRecords title="Verklaring van Executele inlezen">
+   [ "Ingelezen gegevens": I /\ vvexCredMD;credmdIsSuccess;vvexCredMD~ INTERFACE "VvExSamenvatting"
+   , "ButtonBar": I cRud BOX <TABLE hideOnNoRecords noHeader>
+      [ "VVE inlezen": I-vvexCredMD;credmdIsSuccess;vvexCredMD~ cRud <VerklaringVanExecuteleCredInlezen> --!SSIFORMs require an EXISTING atom!--
+      , "OK": I /\ vvexCredMD;credmdIsSuccess;vvexCredMD~ cRud BOX <PROPBUTTON>
+         [ property : vvexProcessReq cRUd
+         ]
+      , "Annuleren": I cRud BOX <PROPBUTTON>
+         [ property : vvexCancelReq cRUd
+         ]
+      ]
+   , "Toegekende rechten": vvexBrek cRud BOX <TABLE hideOnNoRecords title="Aan u toegekende rechten">
+      [ "Bankrekening": I cRud BOX <TABLE noHeader>
+         [ "Bankrekening": I cRud <BrekOneLineSummary>
+         ]
+      , "Rechten": I cRud BOX <TABLE noHeader>
+         [ "Inzage": brekInzageAccount;sessionAccount~;"_SESSION";V;"Inzage"[BrekRecht] cRud
+         , "Overmaken": brekOvermaakAccount;sessionAccount~;"_SESSION";V;"Overmaken"[BrekRecht] cRud
+         , "Beheren": brekBeheerAccount;sessionAccount~;"_SESSION";V;"Beheren"[BrekRecht] cRud
+         , "Mandateren": brekMandateerAccount;sessionAccount~;"_SESSION";V;"Mandateren"[BrekRecht] cRud
+         ]
+      ]
+   ]
+
+POPULATION "BrekRecht" CONTAINS [ "Inzage", "Overmaken", "Beheren", "Mandateren" ]
+REPRESENT BrekRecht TYPE ALPHANUMERIC
+
+--[Verwerken van VerklaringVanExecuteleData - betreffende de overledene]
+vvexProcessReq :: VerklaringVanExecuteleData * VerklaringVanExecuteleData [PROP]
+vvexCancelReq :: VerklaringVanExecuteleData * VerklaringVanExecuteleData [PROP]
+
+ROLE ExecEngine MAINTAINS "Service vvexCancelReq"
+RULE "Service vvexCancelReq": sessionVvExData;vvexCancelReq |- -V
+VIOLATION (TXT "{EX} DelAtom;VerklaringVanExecuteleData;", SRC I
+          ,TXT "{EX} DelPair;sessionIsVvEx;SESSION;", SRC I, TXT ";SESSION;", SRC I
+)
+--[Verwerken van VerklaringVanExecuteleData]
+--$ Accounts van de overledene deactiveren
+ROLE ExecEngine MAINTAINS "Accounts van overledenen worden gedeactiveerd"
+RULE "Accounts van overledenen worden gedeactiveerd":
+    vvexProcessReq;vvexOverlijdensakteData;ovlakteOverlijdenData;ovlNP;I[NatuurlijkPersoon];accActor~
+|-  V[VerklaringVanExecuteleData*Account];(I-accIsActive)
+VIOLATION (TXT "{EX} DelPair;accIsActive;Account;", TGT I, TXT ";Account;", TGT I)
+
+--$ Nagaan of er sprake kan zijn van het toekennen van rechten, en zo nodig Accounts aanmaken
+RULE "Een VerklaringVanExecuteleData geeft alleen rechten als deze betrekking heeft op een rekeninghouder":
+                       -- vvvvvvvvvvvvvvvvvvvvvvvvvvvvv-dit doen we zodat alle Accounts van de overledene ook worden gedeactiveerd
+    vvexProcessReq;vvexOverlijdensakteData;ovlakteOverlijdenData;ovlNP;(I[NatuurlijkPersoon]-accActor~;accActor)
+|-  V;brekHouder[Bankrekening*Party]
+VIOLATION (TXT "{EX} DelAtom;VerklaringVanExecuteleData;", SRC I
+          ,TXT "{EX} InsPair;sessionMsgIfcText;SESSION;", SRC V;"_SESSION"[SESSION]
+          ,TXT ";IfcText;De ingevoerde VerklaringVanExecuteleData heeft geen betrekking op een rekeninghouder van deze bank"
+)
+vvexBrekHouder :: VerklaringVanExecuteleData * Party [UNI]
+vvexBrek       :: VerklaringVanExecuteleData * Bankrekening
+ROLE ExecEngine MAINTAINS "InsPair vvexBrekHouder, vvexBrek"
+RULE "InsPair vvexBrekHouder, vvexBrek": vvexProcessReq;vvexOverlijdensakteData;ovlakteOverlijdenData;ovlNP;brekHouder~ |- vvexBrek
+VIOLATION (TXT "{EX} InsPair;vvexBrek;VerklaringVanExecuteleData;", SRC I, TXT ";Bankrekening;", TGT I
+          ,TXT "{EX} InsPair;vvexBrekHouder;VerklaringVanExecuteleData;", SRC I, TXT ";Party;", TGT brekHouder[Bankrekening*Party]
+)
+vvexAccounts :: VerklaringVanExecuteleData * Account -- Accounts die iets met de VerklaringVanExecuteleData van doen hebben
+pctctAccount :: PartyContactData * Account [UNI] -- Account dat is geassocieerd aan het PartyContactData
+ROLE ExecEngine MAINTAINS "PartyContacts die iets van doen hebben met een VerklaringVanExecuteleData, krijgen een Account"
+RULE "PartyContacts die iets van doen hebben met een VerklaringVanExecuteleData, krijgen een Account":
+    vvexProcessReq;(vvexBeheersExecuteur \/ vvexAfwBewindvoerder) |- V;(accActor;pctctActor~ /\ accParty;pctctParty~)
+VIOLATION (TXT "{EX} InsAtom;Account"
+          ,TXT "{EX} InsPair;accActor;Account;_NEW;Actor;", TGT pctctActor
+          ,TXT "{EX} InsPair;accParty;Account;_NEW;Party;", TGT pctctParty
+          ,TXT "{EX} InsPair;pctctAccount;PartyContactData;", TGT I, TXT ";Account;_NEW"
+)
+ROLE ExecEngine MAINTAINS "InsPair vvexAccounts"
+RULE "InsPair vvexAccounts": vvexProcessReq;(vvexBeheersExecuteur \/ vvexAfwBewindvoerder);pctctAccount |- vvexAccounts
+VIOLATION (TXT "{EX} InsPair;vvexAccounts;VerklaringVanExecuteleData;", SRC I, TXT ";Account;", TGT I)
+
+--$ Rechten uitdelen aan (Accounts van) executeurs
+brekInzageVvExAccount    :: Bankrekening * Account -- Account die mag Inzage op basis van een Verklaring va Executele
+brekOvermaakVvExAccount  :: Bankrekening * Account -- Account die mag Overmaken op basis van een Verklaring va Executele
+brekBeheerVvExAccount    :: Bankrekening * Account -- Account die mag Beheer op basis van een Verklaring va Executele
+brekMandateerVvExAccount :: Bankrekening * Account -- Account die mag Mandateer op basis van een Verklaring va Executele
+
+ROLE ExecEngine MAINTAINS "Een BeheersExecuteur (2-sterren executeur) krijgt inzage en overmaakrechten"
+RULE "Een BeheersExecuteur (2-sterren executeur) krijgt inzage en overmaakrechten":
+    vvexBrek~;vvexBeheersExecuteur;pctctAccount |- brekInzageVvExAccount /\ brekOvermaakVvExAccount
+VIOLATION (TXT "{EX} InsPair;brekInzageVvExAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I
+          ,TXT "{EX} InsPair;brekOvermaakVvExAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I
+)
+ROLE ExecEngine MAINTAINS "Een Afwikkelingsbewindvoerder (3-sterren executeur) krijgt beheersrechten"
+RULE "Een Afwikkelingsbewindvoerder (3-sterren executeur) krijgt beheersrechten":
+    vvexBrek~;vvexAfwBewindvoerder;pctctAccount |- brekBeheerVvExAccount
+VIOLATION (TXT "{EX} InsPair;brekBeheerVvExAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+
+ENDCONTEXT

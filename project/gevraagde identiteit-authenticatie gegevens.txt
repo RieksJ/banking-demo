@@ -1,0 +1,9 @@
+Benodigde gegevens Identificatie/Authenticator
+
+· Volledige geslachtsnaam (voor- en achterna(a)m(en)); 
+· Geboortedatum; 
+· Nationaliteit en/of staatsburgerschap (NB: bij een dubbele nationaliteit hoeft maar 1 nationaliteit opgegeven te worden. (Geboorteland hoeft niet vast gelegd te worden) 
+· Adres van de permanente verblijfplaats;
+· Het type, nummer, datum en plaats/land van uitgifte van het identiteitsbewijs aan de hand waarvan de identiteit van de klant wordt geverifieerd.
+
+Dan krijgt hij een bankpas (volmacht-pasje)

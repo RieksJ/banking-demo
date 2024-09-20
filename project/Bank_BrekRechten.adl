@@ -1,0 +1,163 @@
+CONTEXT "Bankrekeningen - rechten"
+
+--[Rechten op Bankrekeningen]
+--$ Beheer van Bankrekeningen
+{- De Houder van een bankrekening is de Party wiens geld op die bankrekening staat:
+- Een persoonlijke rekening is een bankrekening waarbij de houder een (natuurlijk) persoon is.
+- Een niet-persoonlijke rekening is een bankrekening van een Party die niet een NatuurlijkPersoon is.
+
+Elke bankrekening heeft (precies) EEN beheerder (i.e. de actor die het beheer-account heeft).
+De beheerder van een bankrekening heeft alle rechten betreffende die bankrekening.
+Bij het aanvragen van een rekening moet het beheer-account worden vastgesteld.
+De beheerder en de sysadmin mogen het beheer van een rekening overdragen aan een ander.
+Dat doen ze door het beheer-account te wijzigen. Het sysadmin account mag nooit een beheer-account zijn.
+De actor die het sysadmin account kan gebruiken kan wel beheerder van een bankrekening zijn.
+Daarvoor moet hij dan wel een ander account gebruiken dan het sysadmin account.
+
+Handelingen/rechten kunnen worden gemandateerd naar andere accounts (behalve het sysadmin account).
+-}
+-- een `brekStakeholderAccount` is een account van een actor die belang heeft bij de bankrekening, anders dan de beheerder.
+-- Dit blijkt hieruit dat het Stakeholder account met tenminste 1 (actief zijnde) TechMandaat is geassocieerd.
+brekStakeholderAccount :: Bankrekening * Account -- alle Accounts die voor de Bankrekening een mandaat hebben en dus stakeholder zijn
+ROLE ExecEngine MAINTAINS "Eqv-InsPair brekStakeholderAccount"
+RULE "Eqv-InsPair brekStakeholderAccount":
+    (brekInzageAccount\/brekOvermaakAccount\/brekMandateerAccount)-brekBeheerAccount |- brekStakeholderAccount
+VIOLATION (TXT "{EX} InsPair;brekStakeholderAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair brekStakeholderAccount"
+RULE "Eqv-DelPair brekStakeholderAccount":
+    brekStakeholderAccount |- (brekInzageAccount\/brekOvermaakAccount\/brekMandateerAccount)-brekBeheerAccount
+VIOLATION (TXT "{EX} DelPair;brekStakeholderAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+
+--$ Beheer-recht
+-- Een `brekBeheerAccount` is het (enige) account dat alle rechten heeft op een bankrekening (inzage, overmaken, mandateren, ...)
+-- Het behoort bij een Actor die een Persoon is, en
+-- - die de houder is van de bankrekening (en niet onder bewind of curatele staat),
+-- - aan wie het beheer over de rekening is gemandateerd/gedelegeerd
+-- - aan wie het bewind over de bankrekening is toegekend (door een rechter)
+-- - die afwikkelingsbewindvoerder is van de erfenis van de houder wanneer die is overleden
+brekBeheerAccount :: Bankrekening * Account
+brekOtherBeheerAccount :: Bankrekening * Account -- Accounts that are assigned for Beheer in other ways
+
+RULE "Het SystemAdmin account mag geen BeheerAccount zijn": brekBeheerAccount;accIsSysAdmin |- -V
+
+ROLE ExecEngine MAINTAINS "Initieel brekBeheerAccount voor persoonlijke rekeningen"
+RULE "Initieel brekBeheerAccount voor persoonlijke rekeningen": -- Voor andere rekeningen moet dit bij de aanvraag geregeld worden.
+    (I-brekBeheerAccount;brekBeheerAccount~);brekHouder[Bankrekening*Party];I[Person];(accActor;I[AorP] /\ accParty)~ |- brekOtherBeheerAccount
+VIOLATION (TXT "{EX} InsPair;brekOtherBeheerAccount;Bankrekening;", SRC I[Bankrekening], TXT ";Account;", TGT I)
+
+brekBeheerAccount :: Bankrekening * Account -- define relation brekBeheerAccount as shorthand for brekBeheerAccount \/ brekBeheerMandaatAccount \/ brekOvermaakAccount
+ROLE ExecEngine MAINTAINS "Eqv-InsPair brekBeheerAccount"
+RULE "Eqv-InsPair brekBeheerAccount":
+--  brekIsMine;(brekOtherBeheerAccount \/ brekBeheerMandaatAccount \/ brekBeheerVvExAccount \/ brekBeheerErfSHRAccount) |- brekBeheerAccount
+    brekIsMine;(brekOtherBeheerAccount \/ brekBeheerMandaatAccount) |- brekBeheerAccount
+VIOLATION (TXT "{EX} InsPair;brekBeheerAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair brekBeheerAccount"
+RULE "Eqv-DelPair brekBeheerAccount":
+--  brekBeheerAccount |- brekIsMine;(brekOtherBeheerAccount \/ brekBeheerMandaatAccount \/ brekBeheerVvExAccount \/ brekBeheerErfSHRAccount)
+    brekBeheerAccount |- brekIsMine;(brekOtherBeheerAccount \/ brekBeheerMandaatAccount)
+VIOLATION (TXT "{EX} DelPair;brekBeheerAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+
+-- Een `brekBeheerMandaatAccount` is een Account waarvoor een TechMandaat bestaat die 'beheer' toestaat
+brekBeheerMandaatAccount :: Bankrekening * Account -- define relation brekBeheerMandaatAccount as shorthand for tmdBrek~;tmdIsActief;tmdVoorInzien;tmdMandaatAccount
+ROLE ExecEngine MAINTAINS "Eqv-InsPair brekBeheerMandaatAccount"
+RULE "Eqv-InsPair brekBeheerMandaatAccount":
+    brekIsMine;tmdBrek~;tmdIsActief;tmdVoorBeheer;tmdMandaatAccount |- brekBeheerMandaatAccount
+VIOLATION (TXT "{EX} InsPair;brekBeheerMandaatAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair brekBeheerMandaatAccount"
+RULE "Eqv-DelPair brekBeheerMandaatAccount":
+    brekBeheerMandaatAccount |- brekIsMine;tmdBrek~;tmdIsActief;tmdVoorBeheer;tmdMandaatAccount
+VIOLATION (TXT "{EX} DelPair;brekBeheerMandaatAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+
+--$ Inzagerecht
+{- `brekInzageAccount`s zijn accounts die transacties van de bankrekening mogen inzien. Dat zijn:
+ - het beheer account,
+ - accounts die een mandaat hebben voor inzage, en
+ - accounts die mogen overmaken.
+  -}
+RULE "De SystemAdmin heeft geen inzagerecht": brekInzageAccount;accIsSysAdmin |- -V
+
+brekInzageAccount :: Bankrekening * Account -- define relation brekInzageAccount as shorthand for brekBeheerAccount \/ brekInzageMandaatAccount \/ brekOvermaakAccount
+ROLE ExecEngine MAINTAINS "Eqv-InsPair brekInzageAccount"
+RULE "Eqv-InsPair brekInzageAccount":
+--  brekIsMine;(brekBeheerAccount \/ brekInzageMandaatAccount \/ brekInzageVvExAccount \/ brekInzageErfSHRAccount) |- brekInzageAccount
+    brekIsMine;(brekBeheerAccount \/ brekInzageMandaatAccount) |- brekInzageAccount
+VIOLATION (TXT "{EX} InsPair;brekInzageAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair brekInzageAccount"
+RULE "Eqv-DelPair brekInzageAccount":
+--  brekInzageAccount |- brekIsMine;(brekBeheerAccount \/ brekInzageMandaatAccount \/ brekInzageVvExAccount \/ brekInzageErfSHRAccount)
+    brekInzageAccount |- brekIsMine;(brekBeheerAccount \/ brekInzageMandaatAccount)
+VIOLATION (TXT "{EX} DelPair;brekInzageAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+
+-- Een `brekInzageMandaatAccount` is een Account waarvoor een TechMandaat bestaat die 'inzien' toestaat
+brekInzageMandaatAccount :: Bankrekening * Account -- define relation brekInzageMandaatAccount as shorthand for tmdBrek~;tmdIsActief;tmdVoorInzien;tmdMandaatAccount
+ROLE ExecEngine MAINTAINS "Eqv-InsPair brekInzageMandaatAccount"
+RULE "Eqv-InsPair brekInzageMandaatAccount":
+    brekIsMine;tmdBrek~;tmdIsActief;tmdVoorInzien;tmdMandaatAccount |- brekInzageMandaatAccount
+VIOLATION (TXT "{EX} InsPair;brekInzageMandaatAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair brekInzageMandaatAccount"
+RULE "Eqv-DelPair brekInzageMandaatAccount":
+    brekInzageMandaatAccount |- brekIsMine;tmdBrek~;tmdIsActief;tmdVoorInzien;tmdMandaatAccount
+VIOLATION (TXT "{EX} DelPair;brekInzageMandaatAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+
+--$ Overmaak/Overboek-recht
+{- `brekOvermaakAccount`s zijn accounts die geld van de bankrekening mogen overmaken. Dat zijn
+ - het beheer account, en
+ - accounts die een mandaat hebben voor overmaken.
+-}
+RULE "De SystemAdmin mag geen geld overmaken": brekOvermaakAccount;accIsSysAdmin |- -V
+
+brekOvermaakAccount :: Bankrekening * Account
+ROLE ExecEngine MAINTAINS "Eqv-InsPair brekOvermaakAccount"
+RULE "Eqv-InsPair brekOvermaakAccount":
+--  brekIsMine;(brekBeheerAccount \/ brekOvermaakMandaatAccount \/ brekOvermaakVvExAccount \/ brekOvermaakErfSHRAccount) |- brekOvermaakAccount
+    brekIsMine;(brekBeheerAccount \/ brekOvermaakMandaatAccount) |- brekOvermaakAccount
+VIOLATION (TXT "{EX} InsPair;brekOvermaakAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair brekOvermaakAccount"
+RULE "Eqv-DelPair brekOvermaakAccount":
+--  brekOvermaakAccount |- brekIsMine;(brekBeheerAccount \/ brekOvermaakMandaatAccount \/ brekOvermaakVvExAccount \/ brekOvermaakErfSHRAccount)
+    brekOvermaakAccount |- brekIsMine;(brekBeheerAccount \/ brekOvermaakMandaatAccount)
+VIOLATION (TXT "{EX} DelPair;brekOvermaakAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+
+-- Een `brekOvermaakMandaatAccount` is een Account waarvoor een TechMandaat bestaat die 'overmaken' toestaat
+brekOvermaakMandaatAccount :: Bankrekening * Account -- define relation brekOvermaakMandaatAccount as shorthand for tmdBrek~;tmdIsActief;tmdVoorInzien;tmdMandaatAccount
+ROLE ExecEngine MAINTAINS "Eqv-InsPair brekOvermaakMandaatAccount"
+RULE "Eqv-InsPair brekOvermaakMandaatAccount":
+    brekIsMine;tmdBrek~;tmdIsActief;tmdVoorOvermaken;tmdMandaatAccount |- brekOvermaakMandaatAccount
+VIOLATION (TXT "{EX} InsPair;brekOvermaakMandaatAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair brekOvermaakMandaatAccount"
+RULE "Eqv-DelPair brekOvermaakMandaatAccount":
+    brekOvermaakMandaatAccount |- brekIsMine;tmdBrek~;tmdIsActief;tmdVoorOvermaken;tmdMandaatAccount
+VIOLATION (TXT "{EX} DelPair;brekOvermaakMandaatAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+
+--$ Mandaatrecht
+{- `brekMandateerAccount`s zijn accounts die handelingen betreffende de bankrekening mogen mandateren,
+d.w.z. dat ze het recht op inzien, overmaken e.d. aan accounts kunnen toekennen c.q. herroepen. Dat zijn:
+ - het beheer account, en
+ - accounts die een mandaat hebben om te mogen mandeteren.
+-}
+RULE "De SystemAdmin mag geen mandaten beheren": brekMandateerAccount;accIsSysAdmin |- -V
+
+brekMandateerAccount :: Bankrekening * Account -- Accounts waarmee mandaten kunnen en mogen worden aangemaatk
+ROLE ExecEngine MAINTAINS "Eqv-InsPair brekMandateerAccount"
+RULE "Eqv-InsPair brekMandateerAccount":
+--  brekIsMine;(brekBeheerAccount \/ brekMandateerMandaatAccount \/ brekMandateerVvExAccount \/ brekMandateerErfSHRAccount) |- brekMandateerAccount
+    brekIsMine;(brekBeheerAccount \/ brekMandateerMandaatAccount) |- brekMandateerAccount
+VIOLATION (TXT "{EX} InsPair;brekMandateerAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair brekMandateerAccount"
+RULE "Eqv-DelPair brekMandateerAccount":
+--  brekMandateerAccount |- brekIsMine;(brekBeheerAccount \/ brekMandateerMandaatAccount \/ brekMandateerVvExAccount \/ brekMandateerErfSHRAccount)
+    brekMandateerAccount |- brekIsMine;(brekBeheerAccount \/ brekMandateerMandaatAccount)
+VIOLATION (TXT "{EX} DelPair;brekMandateerAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+
+-- Een `brekMandateerMandaatAccount` is een Account waarvoor een TechMandaat bestaat die 'mandateren' toestaat
+brekMandateerMandaatAccount :: Bankrekening * Account -- define relation brekMandateerMandaatAccount as shorthand for tmdBrek~;tmdIsActief;tmdVoorInzien;tmdMandaatAccount
+ROLE ExecEngine MAINTAINS "Eqv-InsPair brekMandateerMandaatAccount"
+RULE "Eqv-InsPair brekMandateerMandaatAccount":
+    brekIsMine;tmdBrek~;tmdIsActief;tmdVoorMandateren;tmdMandaatAccount |- brekMandateerMandaatAccount
+VIOLATION (TXT "{EX} InsPair;brekMandateerMandaatAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair brekMandateerMandaatAccount"
+RULE "Eqv-DelPair brekMandateerMandaatAccount":
+    brekMandateerMandaatAccount |- brekIsMine;tmdBrek~;tmdIsActief;tmdVoorMandateren;tmdMandaatAccount
+VIOLATION (TXT "{EX} DelPair;brekMandateerMandaatAccount;Bankrekening;", SRC I, TXT ";Account;", TGT I)
+
+ENDCONTEXT

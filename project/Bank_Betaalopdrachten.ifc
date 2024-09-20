@@ -1,0 +1,185 @@
+CONTEXT "Betaalopdrachten - GUI"
+{- Dit bestand gaat over Betaalopdrachten, oftwel het overmaken van geld.
+In deze context gaat het om het aanmaken van nieuwe betaalopdrachten en het wijzigen van bestaande (ingeplande, herhalende)
+Het afhandelen ervan, en dus ook het triggeren van bij- en afschrijf transacties gebeurt in file "Bank_Betaalopdrachten.adl"
+-}
+
+--[Part of the navigation statemachine that switches to and from session context 'Betaalopdrachten']
+-- The below relations serve exclusively for context switching
+sCtxtBetaalopdrachtenReq :: SESSION * SESSION [PROP] -- Request to switch to session context = 'Betaalopdrachten'
+sCtxtIsBetaalopdrachten :: SESSION * SESSION [PROP] -- Property that session context = 'Betaalopdrachten'
+
+RULE "Integriteit van `sCtxtIsBetaalopdrachten`": sCtxtIsBetaalopdrachten |- sessionIsUser
+
+ROLE ExecEngine MAINTAINS "Prepare to switch to sCtxtIsBetaalopdrachten"
+RULE "Prepare to switch to sCtxtIsBetaalopdrachten": sCtxtBetaalopdrachtenReq |- sessionSwitchContextReq \/ sessionIsSwitchingContext
+VIOLATION (TXT "{EX} InsPair;sessionSwitchContextReq;SESSION;", SRC I, TXT ";SESSION;", TGT I
+-- Clean up the 'Overmaak'-context:
+--        nothing to do
+)
+ROLE ExecEngine MAINTAINS "Service sCtxtBetaalopdrachtenReq"
+RULE "Service sCtxtBetaalopdrachtenReq": sCtxtBetaalopdrachtenReq /\ sCtxtIsNone |- sCtxtIsBetaalopdrachten-sCtxtBetaalopdrachtenReq
+VIOLATION (TXT "{EX} DelPair;sCtxtIsNone;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sessionIsSwitchingContext;SESSION;", SRC I, TXT ";SESSION;", TGT I
+--        ,TXT "{EX} InsPair;sessionBrekSelected;SESSION;", SRC I, TXT ";SESSION;", TGT I -- **dit stond er eerst niet maar zou er wellicht toch moeten staan
+          ,TXT "{EX} DelPair;sCtxtBetaalopdrachtenReq;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sCtxtIsBetaalopdrachten;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sessionBankrekeningen;SESSION;", SRC I, TXT ";Bankrekening;", TGT sessionAccount;brekOvermaakAccount~
+)
+--[Focusen op een betaalopdracht]
+sessionBetaalopdracht :: SESSION * Betaalopdracht [UNI] -- Betaalopdracht die wordt ingevuld in een sessie
+
+RULE "Integriteit van `sessionBetaalopdracht`":
+    sessionBetaalopdracht |- (sessionAccount;brekOvermaakAccount~ /\ sessionBrek);btloVanBrek~
+
+ROLE ExecEngine MAINTAINS "Als betaalopdracht is ingepland en we hebben inzagerecht: schakel naar Transacties"
+RULE "Als betaalopdracht is ingepland en we hebben inzagerecht: schakel naar Transacties":
+   sCtxtIsBetaalopdrachten;sessionBetaalopdracht;btloIsIngepland /\ sessionAccount;(btloVanBrek;brekInzageAccount)~ |- sCtxtTransactiesReq;V
+VIOLATION (TXT "{EX} DelPair;sessionBetaalopdracht;SESSION;", SRC I, TXT ";Betaalopdracht;", TGT I
+          ,TXT "{EX} InsPair;sCtxtTransactiesReq;SESSION;", SRC I, TXT ";SESSION;", SRC I
+)
+ROLE ExecEngine MAINTAINS "Als betaalopdracht is ingepland en we hebben GEEN inzagerecht: schakel naar BrekBeheer"
+RULE "Als betaalopdracht is ingepland en we hebben GEEN inzagerecht: schakel naar BrekBeheer":
+   sCtxtIsBetaalopdrachten;sessionBetaalopdracht;btloIsIngepland - sessionAccount;(btloVanBrek;brekInzageAccount)~ |- sCtxtBrekBeheerReq;V
+VIOLATION (TXT "{EX} DelPair;sessionBetaalopdracht;SESSION;", SRC I, TXT ";Betaalopdracht;", TGT I
+          ,TXT "{EX} InsPair;sCtxtBrekBeheerReq;SESSION;", SRC I, TXT ";SESSION;", SRC I
+)
+--$ Nieuwe Betaalopdracht maken
+brekNieuweBetaalopdrachtReq :: Bankrekening * Bankrekening [PROP]
+ROLE ExecEngine MAINTAINS "Deny brekNieuweBetaalopdrachtReq - geen autorisatie"
+RULE "Deny brekNieuweBetaalopdrachtReq - geen autorisatie":
+    "_SESSION";V;brekNieuweBetaalopdrachtReq |- sessionAccount;brekOvermaakAccount~
+VIOLATION (TXT "{EX} DelPair;brekNieuweBetaalopdrachtReq;Bankrekening;", TGT I, TXT ";Bankrekening;", TGT I
+-- Toon bericht alleen als we (nog steeds) zijn ingelogd; na uitloggen bestaat er immers geen sessionAccount meer
+          ,TXT "{EX} InsPair;sessionMsgIfcText;SESSION;", SRC sessionIsUser, TXT ";IfcText;U bent niet geautoriseerd om een betaalopdracht te maken voor deze bankrekening"
+)
+ROLE ExecEngine MAINTAINS "Service brekNieuweBetaalopdrachtReq vanuit andere contexten"
+RULE "Service brekNieuweBetaalopdrachtReq vanuit andere contexten":
+    "_SESSION";sessionAccount;brekOvermaakAccount~;brekNieuweBetaalopdrachtReq
+|- (sCtxtBetaalopdrachtenReq \/ sCtxtIsBetaalopdrachten);V
+VIOLATION (TXT "{EX} InsPair;sCtxtBetaalopdrachtenReq;SESSION;", SRC I, TXT ";SESSION;", SRC I)
+
+ROLE ExecEngine MAINTAINS "Service brekNieuweBetaalopdrachtReq vanuit `sCtxtIsBetaalopdrachten`"
+RULE "Service brekNieuweBetaalopdrachtReq vanuit `sCtxtIsBetaalopdrachten`":
+    sCtxtIsBetaalopdrachten;"_SESSION";sessionAccount;brekOvermaakAccount~;brekNieuweBetaalopdrachtReq
+|-  sessionBetaalopdracht;(I-btloIsIngepland);btloVanBrek
+VIOLATION (TXT "{EX} InsPair;sessionBrek;SESSION;", SRC I, TXT ";Bankrekening;", TGT I
+          ,TXT "{EX} InsAtom;Betaalopdracht"
+          ,TXT "{EX} InsPair;sessionBetaalopdracht;SESSION;", SRC I, TXT ";Betaalopdracht;_NEW"
+          ,TXT "{EX} InsPair;btloVanAccount;Betaalopdracht;_NEW;Account;", SRC sessionAccount
+          ,TXT "{EX} InsPair;btloVanBrek;Betaalopdracht;_NEW;Bankrekening;", TGT I
+          ,TXT "{EX} DelPair;brekNieuweBetaalopdrachtReq;Bankrekening;", TGT I, TXT ";Bankrekening;", TGT I
+)
+
+btloCancelReq :: Betaalopdracht * Betaalopdracht [PROP]
+ROLE ExecEngine MAINTAINS "Vernietig Betaalopdracht"
+RULE "Vernietig Betaalopdracht": sessionBetaalopdracht;btloCancelReq |- -V
+VIOLATION (TXT "{EX} DelAtom;Betaalopdracht;", TGT I[Betaalopdracht]
+          ,TXT "{EX} InsPair;sessionSwitchContextReq;SESSION;", SRC I, TXT ";SESSION;", SRC I -- switch to default context
+)
+--[INTERFACEs]
+POPULATION isInvisible CONTAINS [ ("Betaalopdrachten", "Betaalopdrachten") ]
+POPULATION ifcTitle CONTAINS [ ("Betaalopdrachten", "Betaalopdracht") ]
+INTERFACE "Betaalopdrachten" FOR User: "_SESSION";sCtxtIsBetaalopdrachten cRud BOX <RAW form>
+    [ "Header/Title": V;"Betaalopdrachten"[InterfaceMetaData] cRud
+    , "Button Bar": I INTERFACE "UserHomeButtonBar"
+    , "horizontale lijn": TXT "<hr/>"
+    , "Als er geen bankrekeningen zijn": I - sessionBankrekeningen;brekOvermaakAccount;sessionAccount~ cRud BOX <RAW table>
+        [ "Message": TXT "U heeft geen bankrekening bij onze bank vanwaar u geld kunt overmamen."
+        ]
+    , "Als er wel bankrekeningen zijn": I /\ sessionBankrekeningen;brekOvermaakAccount;sessionAccount~ cRud BOX <RAW form>
+        [ "Als er geen bankrekening is geselecteerd": I-sessionBrek;sessionBrek~ cRud BOX <TABLE noHeader>
+            [ "Selecteer bankrekening": I INTERFACE "Selecteer Bankrekening"
+            , "Message": TXT "U moet een bankrekening selecteren om geld over te kunnen maken."
+            ]
+        , "Betaalopdrachten overzicht": (sessionBrek /\ sessionAccount;brekOvermaakAccount~) cRud BOX <RAW form>
+            [ "Er is een in te vullen Betaalopdracht": btloVanBrek~;(I-btloIsIngepland) INTERFACE "Betaalopdracht Invullen"
+            , "Er zijn geen in te vullen Betaalopdrachten": I-(btloVanBrek~;(I-btloIsIngepland);btloVanBrek) BOX <RAW form>
+                [ "Als er geen Betaalopdrachten zijn": I-btloVanBrek~;btloVanBrek cRud BOX <RAW table>
+                    [ "Message": TXT "Er zijn nog geen betaalopdrachten voor deze rekening gemaakt."
+                    ]
+                , "Als er wel Betaalopdrachten zijn": I[Bankrekening];btloVanBrek~
+                            cRud BOX <TABLE hideOnNoRecords sortable sortBy="Nr" order="desc">
+                    [ "Nr": btloVolgnr cRud
+                    , "Ingediend": btloVanTimeIfcText cRud
+                    , "Bedrag": btloBedrag cRud
+                    , "Begunstigde": I cRud <BegunstigdeTwoLineSummary>
+                    , "Omschrijving": btloOmschrijving cRud
+                    , "Kenmerk": btloKenmerk cRud
+                    , "PlanDatum": btloPlanDatum cRud
+                    , "Opm.": btloStatus cRud
+                    ]
+                ]
+            ]
+        ]
+    ]
+
+--[Bijdrage van Betaalopdrachten aan de algemene ButtonBar]
+INTERFACE "BetaalopdrachtenButtonBar" FOR SYSTEM: "_SESSION";sessionIsUser /\ sessionBankrekeningen;sessionBankrekeningen~ cRud BOX <RAW table>
+    [ "Andere contexten": I-sCtxtIsBetaalopdrachten cRud BOX <RAW table>
+        [ "Als er een rekening gekozen is": I /\ sessionBrek;sessionBrek~ cRud BOX <PROPBUTTON>
+            [ label: TXT "Betaalopdrachten overzicht"
+            , property: sCtxtBetaalopdrachtenReq cRUd
+            , disabled: I - sessionAccount;brekOvermaakAccount~;V cRud
+            , disabledpopovertext: TXT "U bent niet geautoriseerd om overschrijvingen te doen"
+            ]
+        ]
+    , "Context=Betaalopdrachten": sCtxtIsBetaalopdrachten cRud BOX <RAW table>
+        [ "Bankrekening selecteren": I INTERFACE "Selecteer Bankrekening"
+        , "Nieuwe betaalopdracht": (I-sessionBetaalopdracht;sessionBetaalopdracht~);sessionBrek cRud BOX <PROPBUTTON>
+            [ label: TXT "Nieuwe betaalopdracht"
+            , property: brekNieuweBetaalopdrachtReq cRUd
+            , disabled: I - sessionBrek~;"_SESSION";sessionAccount;brekOvermaakAccount~ cRud
+            , disabledpopovertext: TXT "U bent niet geautoriseerd om overschrijvingen te doen"
+            ]
+        ]
+    ]
+
+INTERFACE "Betaalopdracht Invullen" FOR User:
+    I[Betaalopdracht] /\ V;"_SESSION";sessionAccount;brekOvermaakAccount~;btloVanBrek~ cRud BOX <RAW form>
+    [ "Formulier": I cRud BOX <FORM>
+        [ "Bedrag *": btloBedrag cRUd
+        , "Begunstigde *": I cRud BOX <RAW form>
+            [ "IBAN+Selectie": I cRud BOX <RAW table>
+                [ "TXT:IBAN": TXT "IBAN:&nbsp;&nbsp;"
+                , "IBAN": btloNaarIBAN cRUd
+                , "TXT:spaties": TXT "&nbsp;&nbsp;"
+                , "Selecteer uit adresboek": I cRud BOX <OBJECTDROPDOWN>
+                    [ selectfrom: btloVanBrek;abeBrek~ cRud <ABEOneLineSummary>
+                    , setrelation: btloNaarAbe cRUd
+                    , instruction: TXT "of selecteer uit adresboek"
+                    ]
+                ]
+            , "t.n.v.+opslagknop": I cRud BOX <RAW table>
+                [ "TXT:T.n.v.": TXT "T.n.v.:&nbsp;&nbsp;"
+                , "Tenaamstelling": btloNaarHouderRef cRUd
+                , " ": TXT "&nbsp;&nbsp;"
+                , "opslaan?": I /\ btloNaarIBAN;V;btloNaarHouderRef~ cRud BOX <PROPBUTTON>
+                    [ label: TXT "Opslaan?"
+                    , property: btloAbeStoreReq cRUd
+                    , hide:     btloAbeStoreReq cRud
+                    , disabled: I /\ (btloVanBrek;abeBrek~ /\ btloNaarIBAN;abeIBAN~);V cRud
+                    , popovertext: TXT "Klik om deze rekening in uw adresboek op te slaan"
+                    ]
+                ]
+            ]
+        , "Omschrijving": btloOmschrijving cRUd
+        , "Kenmerk": btloKenmerk cRUd
+        , "Datum *": btloPlanDatum cRUd
+--      , " ": btloStatus cRud
+        ]
+    , "Knoppenbalk": I cRud BOX <TABLE noHeader>
+        [ "Indienen": I cRud BOX <PROPBUTTON>
+            [ label: TXT "Versturen" -- Hiermee vraag je de applicatie om een 'Promise' (of 'Deny')
+            , property: btloSubmitReq cRUd
+            , disabled: I-btloIsSubmittable cRud
+            ]
+        , "Annuleren": I cRud BOX <PROPBUTTON> -- Dit is de 'quit' toestand van DEMO
+            [ label: TXT "Annuleren"
+            , property: btloCancelReq cRUd
+            , hide: I - sessionBetaalopdracht~;"_SESSION";sessionBetaalopdracht cRud
+            ]
+        ]
+    ]
+
+ENDCONTEXT

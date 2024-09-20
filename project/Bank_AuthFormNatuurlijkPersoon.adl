@@ -1,0 +1,44 @@
+CONTEXT "Bank_AuthFormNatuurlijkPersoon"
+
+--[Zorg dat je na het invullen teruggaat naar waar je vandaan kwam]
+POPULATION ftExitNavToIfc CONTAINS [ ("FormTmplt_npForm", "/Home") ]
+
+--[Define `npFormIsClean`]
+    ROLE ExecEngine MAINTAINS "InsPair npFormIsClean"
+    RULE "InsPair npFormIsClean":
+        I[NPForm]
+     -- /\ npFormVfdID;npFormVfdID~
+     -- /\ npFormType;npFormType~
+     -- /\ npFormIssuer;npFormIssuer~
+     -- /\ npFormSummaryText;npFormSummaryText~
+        /\ npFormGeslachtsnaam;npFormGeslachtsnaam~
+        /\ npFormVoornamen;npFormVoornamen~
+     -- /\ npFormRoepnaam;npFormRoepnaam~
+     -- /\ npFormEersteVoornaam;npFormEersteVoornaam~
+        /\ npFormGeboortedatum;npFormGeboortedatum~
+        /\ npFormGeboorteplaats;npFormGeboorteplaats~
+     -- /\ npFormGeboorteland;npFormGeboorteland~
+        /\ npFormGeslacht;npFormGeslacht~
+     -- /\ npFormTitel;npFormTitel~
+    |-  npFormIsClean
+    VIOLATION (TXT "{EX} InsPair;npFormIsClean;NPForm;", SRC I, TXT ";NPForm;", TGT I)
+    ROLE ExecEngine MAINTAINS "DelPair npFormIsClean"
+    RULE "DelPair npFormIsClean":
+        npFormIsClean
+    |-  I[NPForm]
+     -- /\ npFormVfdID;npFormVfdID~
+     -- /\ npFormType;npFormType~
+     -- /\ npFormIssuer;npFormIssuer~
+     -- /\ npFormSummaryText;npFormSummaryText~
+        /\ npFormGeslachtsnaam;npFormGeslachtsnaam~
+        /\ npFormVoornamen;npFormVoornamen~
+     -- /\ npFormRoepnaam;npFormRoepnaam~
+     -- /\ npFormEersteVoornaam;npFormEersteVoornaam~
+        /\ npFormGeboortedatum;npFormGeboortedatum~
+        /\ npFormGeboorteplaats;npFormGeboorteplaats~
+     -- /\ npFormGeboorteland;npFormGeboorteland~
+        /\ npFormGeslacht;npFormGeslacht~
+     -- /\ npFormTitel;npFormTitel~
+    VIOLATION (TXT "{EX} DelPair;npFormIsClean;NPForm;", SRC I, TXT ";NPForm;", TGT I)
+
+ENDCONTEXT

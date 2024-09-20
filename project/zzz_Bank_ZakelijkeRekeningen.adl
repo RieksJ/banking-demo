@@ -1,0 +1,39 @@
+CONTEXT "Zakelijke Rekeningen"
+
+CLASSIFY ZakelijkeRekening ISA Bankrekening
+zrekRegForm     :: ZakelijkeRekening * ZrekRegForm  [INJ,UNI]
+zrekKvKNummer   :: ZakelijkeRekening * KvKNummer    [UNI]
+zrekBTWNummer   :: ZakelijkeRekening * BTWNummer    [UNI]
+zrekHandelsnaam :: ZakelijkeRekening * Handelsnaam  [UNI]
+zrekRechtsvorm  :: ZakelijkeRekening * Rechtsvorm   [UNI]
+zrekStartDatum  :: ZakelijkeRekening * Datum        [UNI] -- Datum waarop de onderneming is gestart
+
+--[zrekIsClean: all required/generated data is available in a ZakelijkeRekening]
+zrekIsClean :: ZakelijkeRekening * ZakelijkeRekening [PROP] -- Necessary so that credentials are not issued prematurely.
+ROLE ExecEngine MAINTAINS "Eqv-InsPair zrekIsClean"
+RULE "Eqv-InsPair zrekIsClean":
+   I[ZakelijkeRekening]
+   /\ brekIsClean[Bankrekening]
+-- **onderstaande maakt de boel traag, dus gooien we het er maar uit**
+-- /\ zrekKvKNummer;zrekKvKNummer~
+-- /\ zrekBTWNummer;zrekBTWNummer~
+-- /\ zrekHandelsnaam;zrekHandelsnaam~
+-- /\ zrekRechtsvorm;zrekRechtsvorm~
+|- zrekIsClean[ZakelijkeRekening]
+VIOLATION (TXT "{EX} InsPair;zrekIsClean;ZakelijkeRekening;", SRC I[ZakelijkeRekening], TXT ";ZakelijkeRekening;", TGT I[ZakelijkeRekening])
+ROLE ExecEngine MAINTAINS "Eqv-DelPair zrekIsClean"
+RULE "Eqv-DelPair zrekIsClean":
+   zrekIsClean[ZakelijkeRekening]
+|- I[ZakelijkeRekening]
+   /\ brekIsClean[Bankrekening]
+-- **onderstaande maakt de boel traag, dus gooien we het er maar uit**
+-- /\ zrekKvKNummer;zrekKvKNummer~
+-- /\ zrekBTWNummer;zrekBTWNummer~
+-- /\ zrekHandelsnaam;zrekHandelsnaam~
+-- /\ zrekRechtsvorm;zrekRechtsvorm~
+VIOLATION (TXT "{EX} DelPair;zrekIsClean;ZakelijkeRekening;", SRC I[ZakelijkeRekening], TXT ";ZakelijkeRekening;", TGT I[ZakelijkeRekening])
+
+--[Representations]
+REPRESENT KvKNummer, BTWNummer, Handelsnaam, Rechtsvorm TYPE ALPHANUMERIC
+
+ENDCONTEXT

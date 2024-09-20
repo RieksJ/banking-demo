@@ -1,0 +1,105 @@
+CONTEXT "BrekBeheer"
+-- Het beheren van bankrekeningen, en het aanvragen van nieuwe
+
+--[Part of the navigation statemachine that switches to and from session context 'BrekBeheer']
+sCtxtBrekBeheerReq :: SESSION * SESSION [PROP] -- Request to switch to session context = 'BrekBeheer'
+sCtxtIsBrekBeheer  :: SESSION * SESSION [PROP] -- Property that session context = 'BrekBeheer'
+
+RULE "Integrity of `sCtxtIsBrekBeheer`": sCtxtIsBrekBeheer |- sessionIsUser
+
+ROLE ExecEngine MAINTAINS "Prepare to switch to sCtxtIsBrekBeheer"
+RULE "Prepare to switch to sCtxtIsBrekBeheer": sCtxtBrekBeheerReq |- sessionSwitchContextReq \/ sessionIsSwitchingContext
+VIOLATION (TXT "{EX} InsPair;sessionSwitchContextReq;SESSION;", SRC I, TXT ";SESSION;", TGT I
+-- Clean up the 'BrekBeheer'-context:
+          ,TXT "{EX} DelPair;sessionIsBrekReg;SESSION;", SRC I, TXT ";SESSION;", TGT I -- annuleer ongecommitteerde bankrekeningaanvragen
+)
+ROLE ExecEngine MAINTAINS "Service sCtxtBrekBeheerReq"
+RULE "Service sCtxtBrekBeheerReq": sCtxtBrekBeheerReq /\ sessionIsSwitchingContext |- sCtxtIsBrekBeheer
+VIOLATION (TXT "{EX} DelPair;sCtxtIsNone;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sessionIsSwitchingContext;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sessionBrekSelected;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sCtxtBrekBeheerReq;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sCtxtIsBrekBeheer;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sessionBankrekeningen;SESSION;", SRC I, TXT ";Bankrekening;", TGT sessionAccount;brekBeheerAccount~
+)
+
+--[INTERFACE - Portaal inhoud voor context `BrekBeheer`]
+-- POPULATION isInvisible CONTAINS [ ("BrekBeheerOverzicht", "BrekBeheerOverzicht") ]
+-- INTERFACE "BrekBeheerOverzicht" FOR User: "_SESSION";sessionIsUser INTERFACE BrekBeheer
+-- POPULATION isInvisible CONTAINS [ ("BrekBeheerAanvragen", "BrekBeheerAanvragen") ]
+-- INTERFACE "BrekBeheerAanvragen" FOR User: "_SESSION";sessionIsUser INTERFACE BrekBeheer
+POPULATION isInvisible CONTAINS [ ("BrekBeheer", "BrekBeheer") ]
+POPULATION ifcTitle CONTAINS [ ("BrekBeheer", "Bankrekeningen beheer") ]
+INTERFACE "BrekBeheer" FOR User: "_SESSION";(sCtxtIsNone\/sCtxtIsBrekBeheer) cRud BOX <RAW form>
+    [ "Header/Title": V;"BrekBeheer"[InterfaceMetaData] cRud
+    , "Button Bar": I INTERFACE "UserHomeButtonBar"
+    , "horizontale lijn": TXT "<hr/>"
+    , "Aanvragen bankrekening": sessionIsBrekReg INTERFACE "BrekAanvragen" -- dit moet een eigenstandige context worden
+    , "Er loopt geen aanvraag": I-sessionIsBrekReg cRud BOX <RAW form>
+        [ "Als er geen beheerbare bankrekeningen zijn":  I-sessionAccount;brekBeheerAccount~;V
+            cRud BOX <TABLE noHeader hideOnNoRecords title="Door mij beheerde bankrekeningen">
+            [ "Message": TXT "U beheert geen bankrekening bij onze bank.<br><br>"
+            ]
+        , "Als er beheerbare bankrekeningen zijn": sessionAccount;brekBeheerAccount~
+            cRud BOX <TABLE sortable hideOnNoRecords title="Door mij beheerde bankrekeningen">
+            [ "Rekening": I cRud <BrekTwoLineSummary>
+            , "Saldo": brekSaldo cRud
+            , "Naam": brekNaam cRUd
+            , " ": I cRud BOX <PROPBUTTON>
+                [ label: TXT "Transacties"
+                , property: brekTransactiesReq cRUd
+                -- , hide: I - V;"_SESSION";sessionAccount;brekInzageAccount~ cRud
+                , disabled: I - V;"_SESSION";sessionAccount;brekInzageAccount~ cRud
+                , disabledpopovertext: TXT "U bent niet geautoriseerd voor inzage in deze bankrekening"
+                ]
+            , "  ": I cRud BOX <PROPBUTTON>
+                [ label: TXT "Overschrijven"
+                , property: brekNieuweBetaalopdrachtReq cRUd
+                -- , hide: I - V;"_SESSION";sessionAccount;brekOvermaakAccount~ cRud
+                , disabled: I - V;"_SESSION";sessionAccount;brekOvermaakAccount~ cRud
+                , disabledpopovertext: TXT "U bent niet geautoriseerd om overschrijvingen te doen van deze bankrekening"
+                ]
+            ]
+        , "Als er andere bankrekeningen zijn": sessionAccount;brekStakeholderAccount~
+            cRud BOX <TABLE sortable hideOnNoRecords title="Voor mij toegankelijke bankrekeningen">
+            [ "Rekening": brekIBAN cRud
+            , "Saldo": brekSaldo cRud
+            , "Tenaamstelling": brekHouderRef cRud
+            , " ": I cRud BOX <PROPBUTTON>
+                [ label: TXT "Transacties"
+                , property: brekTransactiesReq cRUd
+                -- , hide: I - V;"_SESSION";sessionAccount;brekInzageAccount~ cRud
+                , disabled: I - V;"_SESSION";sessionAccount;brekInzageAccount~ cRud
+                , disabledpopovertext: TXT "U bent niet geautoriseerd voor inzage in deze bankrekening"
+                ]
+            , "  ": I cRud BOX <PROPBUTTON>
+                [ label: TXT "Overschrijven"
+                , property: brekNieuweBetaalopdrachtReq cRUd
+                -- , hide: I - V;"_SESSION";sessionAccount;brekOvermaakAccount~ cRud
+                , disabled: I - V;"_SESSION";sessionAccount;brekOvermaakAccount~ cRud
+                , disabledpopovertext: TXT "U bent niet geautoriseerd om overschrijvingen te doen van deze bankrekening"
+                ]
+            ]
+        ]
+    ]
+
+--[INTERFACE - Bijdrage van BrekBeheer aan de algemene ButtonBar]
+POPULATION isInvisible CONTAINS [ ("BrekBeheerButtonBar", "BrekBeheerButtonBar") ]
+INTERFACE "BrekBeheerButtonBar" FOR SYSTEM: sessionIsUser cRud BOX <RAW table>
+    [ "Andere contexten": I-sCtxtIsBrekBeheer cRud BOX <RAW table>
+        [ "Rekening openen": I cRud BOX <PROPBUTTON>
+            [ label: TXT "Mijn rekeningen"
+            , property: sCtxtBrekBeheerReq cRUd
+            , hide: sessionIsBrekReg cRud
+            ]
+        ]
+    , "Context=BrekBeheer": sCtxtIsBrekBeheer cRud BOX <RAW table>
+        [ "Rekening openen": I cRud BOX <PROPBUTTON> -- Dit gedeelte moet verhuizen naar een functie voor bankrekeningen-beheer
+            [ label: TXT "Nieuwe rekening openen"
+            , property: sessionBrekRegReq cRUd
+            , hide: sessionIsBrekReg cRud
+            ]
+        ]
+    ]
+
+ENDCONTEXT

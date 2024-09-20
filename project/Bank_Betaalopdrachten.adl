@@ -1,0 +1,302 @@
+CONTEXT "Betaalopdrachten en Transacties"
+{- Een Betaalopdracht (Betaalopdracht) is een opdracht tot het overmaken van een geldbedrag (>= 0, want 0-transacties zijn ook nuttig)
+van de ene rekening (de 'Van-rekening') naar een andere (de 'Naar-rekening').
+Een Transactie is het feitelijke overmaken van geld tussen bankrekeningen. Dat gebeurt alleen op basis van een betaalopdracht.
+Een Betaalopdracht leidt tot twee transacties: een bij de Van-rekening en een bij de Naar-rekening.
+De complexiteit zit erin dat deze steeds in balans moeten blijven.
+
+De levensloop van een Betaalopdracht bestaat uit de volgende fases:
+- `btloIsSubmittable` - de Betaalopdracht heeft voldoende ingevulde velden om naar de backend te kunnen sturen
+- `btloSubmitReq` - verzoek van de gebruiker om de Betaalopdracht in behandeling te nemen
+- `btloIsCommitted` - eigenschap dat opdrachtgever is gecommit aan Betaalopdracht
+- `btloIsClean` - de Betaalopdracht is 'clean' (promisable) en kan dus worden ingepland
+- `btloIsBehandelbaar` - de Betaalopdracht is ingediend en betreft een Van-rekening van deze bank
+- `btloIsOnBehandelbaar` - de Betaalopdracht is ingediend en betreft NIET een Van-rekening van deze bank
+- `btloIsRechtmatig` - de Betaalopdracht is behandelbaar door een hiertoe gerechtigd account
+- `btloIsOnRechtmatig` - de Betaalopdracht is behandelbaar door een hiertoe NIET gerechtigd account.
+- `btloIsIngepland` - de Betaalopdracht is behandelbaar en rechtmatig en is daarmee (automatisch) ingepland
+- `btloUitvoerReq` - het is (automatisch) vastgesteld dat op dit moment de Betaalopdracht moet worden uitgevoerd
+- `btloIsGeweigerd` - Betaalopdracht is geweigerd (saldo op 'Van-rekening' per de plandatum is ontoereikend)
+- `btloAfschrijfReq` - bedrag is afgeschreven van de 'Van-rekening'
+- `btloBijschrijfReq` - bedrag is afgeschreven van de 'Van-rekening' en bijgeschreven bij de 'Naar-rekening'
+
+Een Betaalopdracht wordt in behandeling genomen door een bank als hij 'clean' is,
+en tenminste een van de betreffende rekeningen bij de bank hoort.
+
+Een Transactie opdracht is 'clean' als:
+- de IBANs van de 'Van-rekening' en de 'Naar-rekening' zijn ingevuld (later evt ook: voldoen aan de 11-proef);
+- het over te maken bedrag >= 0 euro is;
+- de sessionActor gerechtigd is om geld van de 'Van-rekening' aover te maken;
+- de sessionActor zich aan de opdracht heeft gecommitteerd (impliciet door indienen, later evt. ook door dig. ondertekenen etc.)
+
+Een betalingsopdracht is behandelbaar voor een bank als
+- de IBAN van de 'Van-rekening' en/of de 'Naar-rekening' bij de bank horen en daar bekend zijn;
+
+**vanaf hier klopt de tekst niet meer**
+Een betalingsopdracht wordt als volgt afgehandeld:
+Een betalingsopdracht kan worden ingediend door een klant van de bank. Dat mag alleen als deze 'clean' is.
+- Zodra dit het geval is wordt een betaaltransactie aangemaakt (status: Ingepland);
+- als op de PlanDatum het Saldo van de 'Van-rekening' niet toereikend is,
+  d.w.z. lager dan de KredietLimiet vermeerderd met het over te maken bedrag,
+   dan wordt de opdracht geweigerd (status: Opdracht geweigerd wegens ontoereikend saldo)
+   en de opdrachtgever wordt geinformeerd (dat gebeurt automatisch omdat de opdrachtgever de statussen kan zien)
+- als op de PlanDatum het Saldo van de 'Van-rekening' wel toereikend is
+   dan wordt het bedrag afgeschreven van de 'Van-rekening' (status: Gereserveerd);
+- als de 'Naar-rekening' van dezelfde bank is,
+   dan wordt het bedrag gecrediteerd bij die 'Naar-rekening'
+     en de transactie wordt geconsolideerd (status: Voltooid);
+**nog te implementeren: **
+- als de 'Naar-rekening' NIET van dezelfde bank is,
+   dan wordt een credit-instructie naar de bank gestuurd die de 'Naar-rekening' heeft (status: Onderweg)
+   en dan wordt het gereserveerde bedrag alvast van het saldo van de 'Van-rekening' afgeschreven;
+(of geld overgemaakt naar de rekening die de bank bij de Naar-bank heeft en een instructie om hiervandaan geld naar de Naar-rekening over te maken, wat dan automatisch gaat)
+- zodra een bericht van de 'Naar-bank' ontvangen wordt dat het bedrag is ontvangen,
+   dan wordt de transactie geconsolideerd (status: Voltooid)
+-}
+
+CONCEPT Betaalopdracht "Een 'zaak' voor het overmaken van een geldbedrag"
+CONCEPT BStatus "Een mensvriendelijke tekst die de verwerkingstoestand van een betaalopdracht weergeeft"
+REPRESENT Tekst,BStatus TYPE ALPHANUMERIC
+
+--$ Betaalopdracht
+btloBedrag         :: Betaalopdracht * Bedrag   [UNI] -- Bedrag waarvan wordt verzocht het over te maken.
+btloVanIBAN        :: Betaalopdracht * IBAN     [UNI] -- IBAN van de deze bankrekening
+btloVanHouderRef   :: Betaalopdracht * PartyRef [UNI] -- PartyRef van de Houder van de Van-rekening
+btloNaarAbe        :: Betaalopdracht * AdresBoekEntry [UNI] -- AdresBoekEntry om 'Naar'-gegevens uit op te halen
+btloNaarIBAN       :: Betaalopdracht * IBAN     [UNI] -- IBAN van de bankrekening waarheen het bedrag overgemaakt moet worden.
+btloNaarHouderRef  :: Betaalopdracht * PartyRef [UNI] -- PartyRef van de Houder van de Naar-rekening
+btloOmschrijving   :: Betaalopdracht * Tekst    [UNI] -- Omschrijving, zoals gebruikelijk bij het overmaken van bedragen.
+btloKenmerk        :: Betaalopdracht * Tekst    [UNI] -- Betalingskenmerk, zoals gebruikelijk bij het overmaken van bedragen.
+btloPlanDatum      :: Betaalopdracht * Datum    [UNI] -- Datum waarop opdrachtgever specificeert dat het bedrag moet worden/zijn overgemaakt.
+btloVanAccount     :: Betaalopdracht * Account  [UNI] -- Account van de indiener
+btloVanTimeIfcText :: Betaalopdracht * IfcText  [UNI] -- Tijdstip waarop de betaalopdracht is ingediend
+
+--$ Afgeleide relaties
+btloVanBrek        :: Betaalopdracht * Bankrekening [UNI] -- Van-rekening
+btloVanBank        :: Betaalopdracht * Bank         [UNI]
+btloVanBankIsMine  :: Betaalopdracht * Betaalopdracht [PROP]
+btloNaarBrek       :: Betaalopdracht * Bankrekening [UNI] -- Naar-rekening (= rekening van de begunstigde)
+btloNaarBank       :: Betaalopdracht * Bank         [UNI] -- Bank die de Naar-rekening beheert
+btloNaarBankIsMine :: Betaalopdracht * Betaalopdracht [PROP]
+btloStatus         :: Betaalopdracht * BStatus      [UNI] -- Toestand waarin de betaalopdracht verkeert.
+
+RULE  "'Van-rekeningnummer' moet van een bank zijn die in de applicatie bekend is": btloVanIBAN  |- V;bankCode;ibanBankCode~
+RULE  "'Naar-rekeningnummer' moet van een bank zijn die in de applicatie bekend is": btloNaarIBAN  |- V;bankCode;ibanBankCode~
+
+--$ Volgnummers van betaalopdrachten
+REPRESENT Volgnr TYPE INTEGER
+btloVolgnr :: Betaalopdracht * Volgnr [UNI] -- Het volgnummer van de Betaalopdracht word toegekend bij het inplannen
+brekBOVolgnr :: Bankrekening * Volgnr [UNI] -- Het volgnummer van de laatste Betaalopdracht
+
+ROLE ExecEngine MAINTAINS "Initialiseer `brekBOVolgnr"
+RULE "Initialiseer `brekBOVolgnr": I |- brekBOVolgnr;brekBOVolgnr~
+VIOLATION (TXT "{EX} InsPair;brekBOVolgnr;Bankrekening;", SRC I, TXT ";Volgnr;0")
+
+--$ Betaalopdracht verwijderen
+ROLE ExecEngine MAINTAINS "Discard orphaned Betaalopdrachten"
+RULE "Discard orphaned Betaalopdrachten":
+   I[Betaalopdracht] |- btloIsIngepland \/ V;sessionBetaalopdracht
+VIOLATION (TXT "{EX} DelAtom;Betaalopdracht;", SRC I)
+
+--[PROCES - Fase 1: Betaalopdrachten aanmaken t/m het DEMO 'Promise' besluit (= inplannen)]
+-- Dit is een interactie tussen de gebruiker en het systeem om tot een inplanbare opdracht te komen.
+
+-- Een nieuw in te vullen Betaalopdracht moet een btloVanBrek en btloVanAccount hebben ingevuld.
+RULE "Betaalopdracht integriteit bij invullen": I-btloIsIngepland |- btloVanBrek;brekOvermaakAccount;btloVanAccount~
+
+ROLE ExecEngine MAINTAINS "Betaalopdracht invullen met standaardwaarden vanuit btloVanBrek"
+RULE "Betaalopdracht invullen met standaardwaarden vanuit btloVanBrek":
+   btloVanBrek |- btloVanIBAN;brekIBAN~ /\ btloVanHouderRef;(brekHouder;partyRef)~
+VIOLATION (TXT "{EX} InsPair;btloVanIBAN;Betaalopdracht;",  SRC I, TXT ";IBAN;", TGT brekIBAN
+          ,TXT "{EX} InsPair;btloVanHouderRef;Betaalopdracht;", SRC I, TXT ";PartyRef;", TGT brekHouder;partyRef
+          ,TXT "{EX} InsPair;btloVanBank;Betaalopdracht;", SRC I, TXT ";Bank;", TGT brekBank
+          ,TXT "{EX} InsPair;btloVanBankIsMine;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", SRC I
+)
+--$ Betaalopdracht opstellen (Create -> btloIsSubmittable)
+-- Met onderstaande regel kunnen we betaalopdrachten van verschillende aanmakers vanuit een excel importeren.
+ROLE ExecEngine MAINTAINS "InsPair `btloPlanDatum`"
+RULE "InsPair `btloPlanDatum`": I |- btloPlanDatum;btloPlanDatum~
+VIOLATION (TXT "{EX} InsPair;btloPlanDatum;Betaalopdracht;", SRC I, TXT ";Datum;{php}date(DATE_ISO8601)")
+
+btloGechecktBedrag :: Betaalopdracht * Bedrag [UNI]
+ROLE ExecEngine MAINTAINS "Overmaakbedrag moet bestaan en groter of gelijk 0.0 zijn"
+RULE "Overmaakbedrag moet bestaan en groter of gelijk 0.0 zijn": btloBedrag |- btloGechecktBedrag
+VIOLATION (TXT "{EX} InsPair;btloBedrag;Betaalopdracht;", SRC I, TXT ";Bedrag;{php}max (", SRC btloBedrag, TXT ", 0.0)"
+          ,TXT "{EX} InsPair;btloGechecktBedrag;Betaalopdracht;", SRC I, TXT ";Bedrag;{php}max (", SRC btloBedrag, TXT ", 0.0)"
+)
+ROLE ExecEngine MAINTAINS "DEMO Deny: Onbekend rekeningnummer"
+RULE "DEMO Deny: Onbekend rekeningnummer":
+   btloNaarIBAN |- btloNaarIBAN;ibanIsClean \/ btloStatus;"Onbekend rekeningnummer";V
+VIOLATION (TXT "{EX} DelPair;btloSubmitReq;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", SRC I -- geef de kans om gegevens te verbeteren
+          ,TXT "{EX} InsPair;btloStatus;Betaalopdracht;", SRC I, TXT ";BStatus;Onbekend of ongeldig rekeningnummer"
+          ,TXT "{EX} InsPair;sessionMsgIfcText;SESSION;", SRC V;"_SESSION"[SESSION], TXT ";IfcText;Onbekend of ongeldig rekeningnummer"
+)
+ROLE ExecEngine MAINTAINS "InsPair btloNaarBrek, btloHouderRef" -- Een bankrekening heeft de autorithatieve gegevens over HouderRef
+RULE "InsPair btloNaarBrek, btloHouderRef": btloNaarIBAN;ibanIsClean;brekIBAN~ |- btloNaarBrek /\ btloNaarHouderRef;brekHouderRef~
+VIOLATION (TXT "{EX} InsPair;btloNaarBrek;Betaalopdracht;", SRC I, TXT ";Bankrekening;", TGT I
+          ,TXT "{EX} InsPair;btloNaarHouderRef;Betaalopdracht;", SRC I, TXT ";PartyRef;", TGT brekHouder;partyRef
+)
+btloIsSubmittable :: Betaalopdracht * Betaalopdracht [PROP] -- de betaalopdracht voldoet aan alle eisen om verwerkt te mogen worden
+ROLE ExecEngine MAINTAINS "Eqv-InsPair btloIsSubmittable"
+RULE "Eqv-InsPair btloIsSubmittable":
+   I[Betaalopdracht]
+   /\ btloVanAccount;btloVanAccount~
+   /\ btloBedrag;btloBedrag~
+   /\ btloVanIBAN;ibanIsClean;btloVanIBAN~ -- ibanIsClean: alle eigenschappen van de IBAN zijn bekend/berekend.
+   /\ btloNaarIBAN;ibanIsClean;btloNaarIBAN~ -- ibanIsClean is nodig voor gevallen die uit een excel-import bestand komen.
+|- btloIsSubmittable
+VIOLATION (TXT "{EX} InsPair;btloIsSubmittable;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair btloIsSubmittable"
+RULE "Eqv-DelPair btloIsSubmittable":
+   btloIsSubmittable
+|- I[Betaalopdracht]
+   /\ btloVanAccount;btloVanAccount~
+   /\ btloBedrag;btloBedrag~
+   /\ btloVanIBAN;ibanIsClean;btloVanIBAN~ -- ibanIsClean: alle eigenschappen van de IBAN zijn bekend/berekend.
+   /\ btloNaarIBAN;ibanIsClean;btloNaarIBAN~ -- ibanIsClean is nodig voor gevallen die uit een excel-import bestand komen.
+VIOLATION (TXT "{EX} DelPair;btloIsSubmittable;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I)
+
+--$ Controleer dat de opdrachtgever zich aan betaalopdracht heeft gecommitteerd (btloIsSubmittable -> btloIsCommitted)
+btloSubmitReq   :: Betaalopdracht * Betaalopdracht [PROP] -- Verzoek om Betaalopdracht te evalueren om te kunnen 'Promisen' (=inplannen)
+btloIsCommitted :: Betaalopdracht * Betaalopdracht [PROP] -- De opdrachtgever heeft zich aan de betaalopdracht gecommitteerd
+
+RULE "Een betaalopdracht kan alleen worden geevalueerd als er genoeg gegevens zijn": btloSubmitReq |- btloIsSubmittable
+
+ROLE ExecEngine MAINTAINS "Deny btloSubmitReq: Onvoldoende gegevens"
+RULE "Deny btloSubmitReq: Onvoldoende gegevens": btloSubmitReq |- btloIsSubmittable
+VIOLATION (TXT "{EX} DelPair;btloSubmitReq;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", SRC I -- geef de kans om gegevens te verbeteren
+          ,TXT "{EX} DelPair;btloVanTimeIfcText;Betaalopdracht;", SRC I, TXT ";IfcText;", SRC btloVanTimeIfcText
+          ,TXT "{EX} InsPair;btloStatus;Betaalopdracht;", SRC I, TXT ";BStatus;Onvoldoende gegevens - vul bedrag en IBAN in"
+          ,TXT "{EX} InsPair;sessionMsgIfcText;SESSION;", SRC V;"_SESSION"[SESSION], TXT ";IfcText;Onvoldoende gegevens - vul bedrag en IBAN in"
+)
+-- Hier kan nog een RULE komen die een handtekening of zo van de opdrachtgever controleert.
+ROLE ExecEngine MAINTAINS "Service `btloSubmitReq`"
+RULE "Service `btloSubmitReq`": btloSubmitReq /\ btloIsSubmittable |- btloIsCommitted
+VIOLATION (TXT "{EX}_;InsPair_;btloVanTimeIfcText_;Betaalopdracht_;", SRC I, TXT "_;IfcText_;{php}date('d-m-Y').' '.date('H:i:s')"
+-- Bij onderstaande berekeningen moet zeker zijn dat de argumenten ALLEMAAL gegarandeerd berekend zijn; anders gaat het importeren van excel files mogelijk niet goed.
+          ,TXT "{EX} InsPair;btloVanBank;Betaalopdracht;", SRC I, TXT ";Bank;", TGT btloVanIBAN;ibanBank
+          ,TXT "{EX} InsPair;btloVanBankIsMine;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I /\ btloVanIBAN;ibanBank;bankIsMine;V
+          ,TXT "{EX} InsPair;btloVanBrek;Betaalopdracht;", SRC I, TXT ";Bankrekening;", TGT btloVanIBAN;brekIBAN~;brekIsMine
+          ,TXT "{EX} InsPair;btloVanHouderRef;Betaalopdracht;", SRC I, TXT ";PartyRef;", TGT btloVanIBAN;brekIBAN~;brekHouder;partyRef
+-- Bij onderstaande berekeningen moet zeker zijn dat de argumenten ALLEMAAL gegarandeerd berekend zijn; anders gaat het importeren van excel files mogelijk niet goed.
+          ,TXT "{EX} InsPair;btloNaarBank;Betaalopdracht;", SRC I, TXT ";Bank;", TGT btloNaarIBAN;ibanBank
+          ,TXT "{EX} InsPair;btloNaarBankIsMine;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I /\ btloNaarIBAN;ibanBank;bankIsMine;V
+          ,TXT "{EX} InsPair;btloNaarBrek;Betaalopdracht;", SRC I, TXT ";Bankrekening;", TGT btloNaarIBAN;brekIBAN~;brekIsMine
+          ,TXT "{EX} InsPair;btloNaarHouderRef;Betaalopdracht;", SRC I, TXT ";PartyRef;", TGT btloNaarIBAN;brekIBAN~;brekHouder;partyRef
+          ,TXT "{EX} InsPair;btloIsCommitted;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I -- Dit is impliciet wat anders expliciet zou worden...
+          ,TXT "{EX} InsPair;btloStatus;Betaalopdracht;", SRC I, TXT ";BStatus;Ingediend"
+          ,TXT "{EX} DelPair;btloSubmitReq;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", SRC I -- geef de kans om gegevens te verbeteren
+)
+--$ Betaalopdracht evalueren op inplanbaarheid  (btloIsCommitted -> btloIsClean)
+-- We hebben dit nodig omdat een Betaalopdracht ook een andere geschiedenis kan hebben
+-- en dan handmatige invoer en dat is bijv. 'btloVanBankIsMine' niet meer vanzelfsprekend.
+btloIsClean :: Betaalopdracht * Betaalopdracht [PROP] -- Eigenschap dat de betaalopdracht 'clean' is en dus kan worden ingepland
+ROLE ExecEngine MAINTAINS "Eqv-InsPair btloIsClean"
+RULE "Eqv-InsPair btloIsClean": btloIsCommitted /\ btloVanBankIsMine /\ btloIsSubmittable |- btloIsClean
+VIOLATION (TXT "{EX} InsPair;btloIsClean;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair btloIsClean"
+RULE "Eqv-DelPair btloIsClean": btloIsClean |- btloIsCommitted /\ btloVanBankIsMine /\ btloIsSubmittable
+VIOLATION (TXT "{EX} DelPair;btloIsClean;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I)
+
+--$ Bepaal behandelbaarheid van de betaalopdracht door deze applicatie
+-- Een betaalopdracht is behandelbaar door deze applicatie als de applicatie eigenaar ofwel de 'Van-bank' is.
+-- Als een AndereBank geld overmaakt tbv een rekening op MijnBank, dan heeft AndereBank een rekening bij mij
+-- en dit is dan de Van-rekening van de door mij af te wikkelen transactie. De 'Van-rekening' moet dus altijd van mij zijn.
+btloIsBehandelbaar :: Betaalopdracht * Betaalopdracht [PROP] -- De Betaalopdracht kan door deze applicatie worden afgewikkeld
+ROLE ExecEngine MAINTAINS "InsPair btloIsBehandelbaar"
+RULE "InsPair btloIsBehandelbaar": btloIsClean /\ btloVanBankIsMine |- btloIsBehandelbaar
+VIOLATION (TXT "{EX} InsPair;btloIsBehandelbaar;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I)
+
+btloIsOnbehandelbaar :: Betaalopdracht * Betaalopdracht [PROP] -- De Betaalopdracht kan NIET door deze applicatie worden afgewikkeld
+ROLE ExecEngine MAINTAINS "DEMO Deny: Onbehandelbaar (IBAN is niet van de bank)"
+RULE "DEMO Deny: Onbehandelbaar (IBAN is niet van de bank)": btloIsClean - btloVanBankIsMine |- btloIsOnbehandelbaar
+VIOLATION (TXT "{EX} InsPair;btloIsOnbehandelbaar;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I
+          ,TXT "{EX} InsPair;btloStatus;Betaalopdracht;", SRC I, TXT ";BStatus;Onbehandelbaar (IBAN is niet van de bank)"
+          ,TXT "{EX} InsPair;sessionMsgIfcText;SESSION;", SRC V;"_SESSION"[SESSION], TXT ";IfcText;Onbehandelbaar (IBAN is niet van de bank)"
+)
+--$ Bepaal (on)rechtmatigheid van de indiening van de betaalopdracht
+{- De (on)rechtmatigheid van een betaalopdracht kan alleen worden vastgesteld als deze behandelbaar is.
+   Immers, alleen dan kan de bank er wat van vinden.
+-}
+btloIsRechtmatig :: Betaalopdracht * Betaalopdracht [PROP] -- de betaalopdracht is ingediend door een hiertoe gerechtigde entiteit
+ROLE ExecEngine MAINTAINS "Eqv-InsPair btloIsRechtmatig"
+RULE "Eqv-InsPair btloIsRechtmatig": btloIsBehandelbaar /\ btloVanBrek;brekOvermaakAccount;btloVanAccount~ |- btloIsRechtmatig
+VIOLATION (TXT "{EX} InsPair;btloIsRechtmatig;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I)
+
+btloIsOnrechtmatig :: Betaalopdracht * Betaalopdracht [PROP] -- de betaalopdracht is NIET ingediend door een hiertoe gerechtigde entiteit
+ROLE ExecEngine MAINTAINS "DEMO Deny: Indiener is niet gerechtigd om betaalopdrachten te geven"
+RULE "DEMO Deny: Indiener is niet gerechtigd om betaalopdrachten te geven":
+   btloIsBehandelbaar - btloVanBrek;brekOvermaakAccount;btloVanAccount~ |- btloIsOnrechtmatig
+VIOLATION (TXT "{EX} InsPair;btloIsOnrechtmatig;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I
+          ,TXT "{EX} InsPair;btloStatus;Betaalopdracht;", SRC I, TXT ";BStatus;Indiener is niet gerechtigd om betaalopdrachten te geven."
+          ,TXT "{EX} InsPair;sessionMsgIfcText;SESSION;", SRC V;"_SESSION"[SESSION], TXT ";IfcText;U bent niet gerechtigd om betaalopdrachten te geven."
+)
+--$ Bepaal of de betaalopdracht ingepland kan worden
+-- Bij het inplannen krijgt de Betaalopdracht ook een volgnummer.
+btloIsIngepland :: Betaalopdracht * Betaalopdracht [PROP] -- De transactie is ingepland om op de plandatum te worden verwerkt
+ROLE ExecEngine MAINTAINS "InsPair btloIsIngepland"
+RULE "InsPair btloIsIngepland": btloIsClean /\ btloIsBehandelbaar /\ btloIsRechtmatig |- btloIsIngepland
+VIOLATION (TXT "{EX} InsPair;btloIsIngepland;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I
+          ,TXT "{EX} InsPair;btloStatus;Betaalopdracht;", SRC I, TXT ";BStatus;Ingepland"
+          ,TXT "{EX} InsPair;btloVolgnr;Betaalopdracht;", SRC I, TXT ";Volgnr;{php}", TGT btloVanBrek;brekBOVolgnr, TXT "+1"
+          ,TXT "{EX} InsPair;brekBOVolgnr;Bankrekening;", SRC btloVanBrek, TXT ";Volgnr;{php}", TGT btloVanBrek;brekBOVolgnr, TXT "+1"
+)
+--[PROCES - Fase 3: Behandelen van betaalopdrachten op de plandatum]
+--$ Vaststellen dat Betaalopdracht nu moet worden uitgevoerd
+btloUitvoerReq :: Betaalopdracht * Betaalopdracht [PROP] -- De Betaalopdracht moet nu worden uitgevoerd
+ROLE ExecEngine MAINTAINS "Vaststellen dat Betaalopdracht nu moet worden uitgevoerd"
+RULE "Vaststellen dat Betaalopdracht nu moet worden uitgevoerd":
+   btloIsIngepland /\ btloPlanDatum;sessionToday~;V |- btloUitvoerReq
+VIOLATION (TXT "{EX} InsPair;btloUitvoerReq;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I
+          ,TXT "{EX} InsPair;btloStatus;Betaalopdracht;", SRC I, TXT ";BStatus;In uitvoering"
+)
+--$ Vaststellen van de (on)toereikendheid van het Saldo op de plandatum
+btloSaldoIsToereikend :: Betaalopdracht * BOOL [UNI] -- BOOL die aangeeft of het saldo toereikend is om te worden overgemaakt.
+ROLE ExecEngine MAINTAINS "Vaststellen van de toereikendheid van het Saldo"
+RULE "Vaststellen van de toereikendheid van het Saldo":
+   btloUitvoerReq |- btloSaldoIsToereikend;btloSaldoIsToereikend~ -- d.w.z.dat btloSaldoToereikend is ofwel TRUE ofwel FALSE
+VIOLATION (TXT "{EX} InsPair;btloSaldoIsToereikend;Betaalopdracht;", SRC I, TXT ";BOOL;{php}(("
+             ,SRC btloVanBrek;brekSaldo, TXT "+", SRC btloVanBrek;brekKredLimiet, TXT ") >= ", SRC btloBedrag, TXT ")? 'TRUE' : 'FALSE'"
+)
+--$ Weigeren van Betaalopdracht als saldo op uitvoerdatum ontoereikend is
+-- - als op de PlanDatum het Saldo van de 'Van-rekening' niet toereikend is,
+--   d.w.z. lager dan de KredietLimiet vermeerderd met het over te maken bedrag,
+--    dan wordt de opdracht geweigerd (status: Opdracht geweigerd wegens ontoereikend saldo)
+--    en de opdrachtgever wordt geinformeerd (dat gebeurt automatisch omdat de opdrachtgever de statussen kan zien)
+btloIsGeweigerd :: Betaalopdracht * Betaalopdracht [PROP]
+ROLE ExecEngine MAINTAINS "Weigeren van opdracht wegens ontoereikend saldo"
+RULE "Weigeren van opdracht wegens ontoereikend saldo":
+   btloUitvoerReq /\ btloSaldoIsToereikend;"FALSE";btloSaldoIsToereikend~ |- btloIsGeweigerd
+-- Je zou de opdracht nog een keer of 3 naar een volgende dag kunnen herplannen, maar dat doen we nu niet.
+VIOLATION (TXT "{EX} InsPair;btloIsGeweigerd;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I
+          ,TXT "{EX} InsPair;btloStatus;Betaalopdracht;", SRC I, TXT ";BStatus;Geweigerd wegens ontoereikend saldo"
+          ,TXT "{EX} InsPair;sessionMsgIfcText;SESSION;", SRC V;"_SESSION"[SESSION], TXT ";IfcText;Geweigerd wegens ontoereikend saldo"
+)
+-- - als op de PlanDatum het Saldo van de 'Van-rekening' wel toereikend is
+--    dan wordt het bedrag afgeschreven van de 'Van-rekening' (status: Gereserveerd);
+btloAfschrijfReq :: Betaalopdracht * Betaalopdracht [PROP]
+ROLE ExecEngine MAINTAINS "Reserveren van over te schrijven bedrag"
+RULE "Reserveren van over te schrijven bedrag":
+   btloIsIngepland /\ btloSaldoIsToereikend;"TRUE";btloSaldoIsToereikend~ |- btloAfschrijfReq
+VIOLATION (TXT "{EX} InsPair;btloAfschrijfReq;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I
+          ,TXT "{EX} InsPair;btloStatus;Betaalopdracht;", SRC I, TXT ";BStatus;Gereserveerd"
+)
+-- - als de 'Naar-rekening' van dezelfde bank is,
+--    dan wordt het bedrag gecrediteerd bij die 'Naar-rekening'
+--      en de transactie wordt geconsolideerd (status: Voltooid);
+btloBijschrijfReq :: Betaalopdracht * Betaalopdracht [PROP]
+ROLE ExecEngine MAINTAINS "Betaalopdrachten naar rekening bij dezelfde bank"
+RULE "Betaalopdrachten naar rekening bij dezelfde bank":
+   btloAfschrijfReq /\ btloVanBrek;brekBank;bankIsMine;brekBank~;btloNaarBrek~ |- btloBijschrijfReq
+VIOLATION (TXT "{EX} InsPair;btloBijschrijfReq;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I
+          ,TXT "{EX} InsPair;btloStatus;Betaalopdracht;", SRC I, TXT ";BStatus;Voltooid"
+          )
+-- ** nog te implementeren: **
+-- - als de 'Naar-rekening' NIET van dezelfde bank is,
+--    dan wordt een credit-instructie naar de bank gestuurd die de 'Naar-rekening' heeft (status: Onderweg)
+--    en dan wordt het gereserveerde bedrag alvast van het saldo van de 'Van-rekening' afgeschreven;
+-- (of geld overgemaakt naar de rekening die de bank bij de Naar-bank heeft en een instructie om hiervandaan geld naar de Naar-rekening over te maken, wat dan automatisch gaat)
+-- - zodra een bericht van de 'Naar-bank' ontvangen wordt dat het bedrag is ontvangen,
+--    dan wordt de transactie geconsolideerd (status: Voltooid)
+
+ENDCONTEXT

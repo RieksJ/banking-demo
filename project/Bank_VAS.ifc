@@ -1,0 +1,67 @@
+CONTEXT "Bank - Value Added Services (VAS)"
+{- Dit bestand gaat over de gebruikersinterfaces die betrekking hebben op 'Value Added Services' (VASsen),
+   en de state-machinerie om tussen de verschillende (ook andere) interfaces te schakelen.
+   De state-machinerie om nieuwe VAS aan te maken, deze te veranderen e.d. is out of scope.
+   Wel zal er een aantal buttons zijn die de requests hiervoor triggeren.
+-}
+
+--[Part of the navigation statemachine that switches to and from session context 'VAS']
+sCtxtVASReq :: SESSION * SESSION [PROP] -- Request to switch to session context = 'VAS'
+sCtxtIsVAS  :: SESSION * SESSION [PROP] -- Property that session context = 'VAS'
+
+ROLE ExecEngine MAINTAINS "Prepare to switch to sCtxtIsVAS"
+RULE "Prepare to switch to sCtxtIsVAS": sCtxtVASReq |- sessionSwitchContextReq \/ sessionIsSwitchingContext
+VIOLATION (TXT "{EX} InsPair;sessionSwitchContextReq;SESSION;", SRC I, TXT ";SESSION;", TGT I
+-- Clean up the 'VAS'-context:
+--        ,TXT "{EX} DelPair;sessionTechMandaat;SESSION;", SRC I, TXT ";TechMandaat;", TGT sessionTechMandaat -- annuleer ongecommitteerde VAS
+)
+ROLE ExecEngine MAINTAINS "Service sCtxtVASReq"
+RULE "Service sCtxtVASReq": sCtxtVASReq /\ sCtxtIsNone |- sCtxtIsVAS-sCtxtVASReq
+VIOLATION (TXT "{EX} DelPair;sCtxtIsNone;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sessionIsSwitchingContext;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sCtxtVASReq;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sCtxtIsVAS;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sessionBrekSelected;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sessionBankrekeningen;SESSION;", SRC I, TXT ";Bankrekening;", TGT sessionAccount;brekMandateerAccount~
+)
+
+--[INTERFACE]
+
+POPULATION isInvisible CONTAINS [ ("VAS", "VAS") ]
+POPULATION ifcTitle CONTAINS [ ("VAS", "Services") ]
+INTERFACE "VAS" FOR User: "_SESSION";sCtxtIsVAS cRud BOX <RAW form>
+    [ "Header/Title": V;"VAS"[InterfaceMetaData] cRud
+    , "Button Bar": I INTERFACE "UserHomeButtonBar"
+    , "horizontale lijn": TXT "<hr/>"
+    , "Verklaring van Executele": I INTERFACE "VerklaringVanExecutele" -- Nabestaandenportaal
+    , "Erfenis rechthebbenden": sessionIsErfSHR INTERFACE "VASErfenisRechthebbende"
+    ]
+
+--[Bijdrage van Transacties aan de algemene ButtonBar]
+INTERFACE "VASButtonBar" FOR SYSTEM: "_SESSION";sessionIsUser cRud BOX <RAW table>
+   [ "Andere contexten": I-sCtxtIsVAS cRud BOX <PROPBUTTON>
+      [ label: TXT "Andere diensten"
+      , property: sCtxtVASReq cRUd
+      , hide: sCtxtIsVAS cRud
+      , popovertext: TXT "Bijvoorbeeld om toegang te krijgen tot bankrekeningen van derden."
+      ]
+   , "Context=VAS": sCtxtIsVAS cRud BOX <RAW table>
+      [ "Verklaring van Executele": I cRud BOX <PROPBUTTON>
+         [ label: TXT "Verkl. van Executele"
+         , setprop1: sessionIsVvEx cRUd
+         , clrprop1: sessionIsErfSHR cRUd
+         , hide: sessionIsVvEx cRud
+         , popovertext: TXT "Inlezen van een Verklaring van Executele"
+         ]
+      , "spaties": TXT "&nbsp;&nbsp;"
+      , "Verklaring van Erfrecht": I cRud BOX <PROPBUTTON>
+         [ label: TXT "Verkl. van Erfrecht"
+         , setprop1: sessionIsErfSHR cRUd
+         , clrprop1: sessionIsVvEx cRUd
+         , hide: sessionIsErfSHR cRud
+         , popovertext: TXT "Inlezen van een Verklaring van Erfrecht"
+         ]
+      ]
+   ]
+
+ENDCONTEXT

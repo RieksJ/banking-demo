@@ -1,0 +1,105 @@
+CONTEXT "Bank_Transacties"
+-- De context `sCtxtIsTransacties` is de context waarin we rekeninggegevens kunnen inzien.
+
+brekTransactiesReq :: Bankrekening * Bankrekening [PROP]
+
+ROLE ExecEngine MAINTAINS "Deny brekTransactiesReq"
+RULE "Deny brekTransactiesReq": brekTransactiesReq |- V;"_SESSION";sessionBrekSelected;sessionAccount;brekInzageAccount~
+VIOLATION (TXT "{EX} DelPair;brekTransactiesReq;Bankrekening;", SRC I, TXT ";Bankrekening;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Service brekTransactiesReq"
+RULE "Service brekTransactiesReq":
+    "_SESSION";sessionBrekSelected;sessionAccount;brekInzageAccount~;brekTransactiesReq
+|- (sCtxtTransactiesReq \/ sCtxtIsTransacties);sessionBrek
+VIOLATION (TXT "{EX} InsPair;sessionBrek;SESSION;", SRC I, TXT ";Bankrekening;", TGT I
+          ,TXT "{EX} InsPair;sCtxtTransactiesReq;SESSION;", SRC I, TXT ";SESSION;", SRC I
+          ,TXT "{EX} DelPair;brekTransactiesReq;Bankrekening;", TGT I, TXT ";Bankrekening;", TGT I
+)
+--[Part of the navigation statemachine that switches to and from session context 'Transacties']
+-- Om naar de 'Transacties' context te schakelen moet `sessionBrek` zijn gepopuleerd
+sCtxtTransactiesReq :: SESSION * SESSION [PROP] -- Request to switch to session context = 'Transacties'
+sCtxtIsTransacties  :: SESSION * SESSION [PROP] -- Property that session context = 'Transacties'
+
+ROLE ExecEngine MAINTAINS "Deny sCtxtTransactiesReq"
+RULE "Deny sCtxtTransactiesReq": sCtxtTransactiesReq |- sessionBrek;sessionBrek~
+VIOLATION (TXT "{EX} DelPair;sessionSwitchContextReq;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sessionMsgIfcText;SESSION;", SRC I, TXT ";IfcText;Kan niet schakelen - er is geen `sessionBrek`"
+)
+
+ROLE ExecEngine MAINTAINS "Prepare to switch to sCtxtIsTransacties"
+RULE "Prepare to switch to sCtxtIsTransacties":
+    sCtxtTransactiesReq /\ sessionBrek;sessionBrek~ |- sessionSwitchContextReq \/ sessionIsSwitchingContext
+VIOLATION (TXT "{EX} InsPair;sessionSwitchContextReq;SESSION;", SRC I, TXT ";SESSION;", TGT I
+-- Clean up the 'Transacties'-context:
+--        nothing to do
+)
+ROLE ExecEngine MAINTAINS "Service sCtxtTransactiesReq"
+RULE "Service sCtxtTransactiesReq":
+    sCtxtTransactiesReq /\ sCtxtIsNone /\ sessionBrek;sessionBrek~ |- sCtxtIsTransacties-sCtxtTransactiesReq
+VIOLATION (TXT "{EX} DelPair;sCtxtIsNone;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sessionIsSwitchingContext;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sessionBrekSelected;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sCtxtTransactiesReq;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sCtxtIsTransacties;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sessionBankrekeningen;SESSION;", SRC I, TXT ";Bankrekening;", TGT sessionAccount;brekInzageAccount~
+)
+--[INTERFACEs - Knoppen en hun werking] -- Deze schakelen naar andere contexten
+-- --$ Knop: verzoek om XXX
+
+--[INTERFACEs]
+POPULATION isInvisible CONTAINS [ ("Transacties", "Transacties") ]
+POPULATION ifcTitle CONTAINS [ ("Transacties", "Bankrekening overzicht") ]
+INTERFACE "Transacties" FOR User: "_SESSION";sCtxtIsTransacties cRud BOX <RAW form>
+    [ "Header/Title": V;"Transacties"[InterfaceMetaData] cRud
+    , "Button Bar": I INTERFACE "UserHomeButtonBar"
+    , "horizontale lijn": TXT "<hr/>"
+    , "Als er geen bankrekeningen zijn": I - sessionBankrekeningen;sessionBankrekeningen~ cRud BOX <RAW form>
+        [ "Message": TXT "U heeft nog geen bankrekening bij onze bank."
+        ]
+    , "Als er wel bankrekeningen zijn": I /\ sessionBankrekeningen;sessionBankrekeningen~ cRud BOX <RAW form>
+        [ "Als er geen bankrekening is geselecteerd": I-sessionBrek;sessionBrek~ cRud BOX <TABLE noHeader>
+            [ "Selecteer bankrekening": I INTERFACE "Selecteer Bankrekening"
+            , "Message": TXT "U moet een bankrekening selecteren om transacties te zien."
+            ]
+        , "Transacties overzicht": (sessionBrek /\ sessionAccount;brekInzageAccount~) cRud BOX <RAW form>
+            [ "Als er geen transacties zijn": I-trxBrek~;trxBrek cRud BOX <RAW table>
+                [ "Message": TXT "Er zijn nog geen transacties gedaan met deze rekening."
+                ]
+            , "Als er wel transacties zijn": I[Bankrekening];trxBrek~ cRud BOX <TABLE hideOnNoRecords sortable sortBy="Nr" order="desc">
+                [ "Nr": trxVolgnr cRud
+                , "Datum": trxDatum cRud
+                , " ": trxAfBij cRud
+                , "Bedrag": trxBedrag cRud
+                , "  ": trxVanNaar cRud
+                , "Tegenrekening": trxTegenrekening cRud
+                , "T.n.v.": trxAnderePartij cRud
+                , "Saldo": trxSaldo cRud
+                , "Kenmerk/Omschrijving": trxKenmerk \/ trxOmschrijving cRud
+                , "Door": trxVanAccount /\ V;"_SESSION";sessionAccount;-I cRud <AccountOneLineSummary>
+                ]
+            ]
+        ]
+    ]
+
+--[Bijdrage van Transacties aan de algemene ButtonBar]
+INTERFACE "TransactiesButtonBar" FOR SYSTEM: "_SESSION";sessionIsUser /\ sessionBankrekeningen;sessionBankrekeningen~ cRud BOX <RAW table>
+    [ "Andere contexten": I-sCtxtIsTransacties cRud BOX <RAW table>
+        [ "Als er een rekening gekozen is": I /\ sessionBrek;sessionBrek~ cRud BOX <PROPBUTTON>
+            [ label: TXT "Transacties Overzicht"
+            , property: sCtxtTransactiesReq cRUd
+            , disabled: I - sessionAccount;brekInzageAccount~;V cRud
+            , disabledpopovertext: TXT "U bent niet geautoriseerd om rekeningen in te zien"
+            ]
+        ]
+    , "Context=Transacties": sCtxtIsTransacties cRud BOX <RAW table>
+        [ "Bankrekening selecteren": I INTERFACE "Selecteer Bankrekening"
+        , "Nieuwe betaalopdracht": sessionBrek cRud BOX <PROPBUTTON>
+            [ label: TXT "Betaalopdracht"
+            , property: brekNieuweBetaalopdrachtReq cRUd
+            , disabled: I - sessionBrek~;"_SESSION";sessionAccount;brekOvermaakAccount~ cRud
+            , disabledpopovertext: TXT "U bent niet geautoriseerd om overschrijvingen te doen"
+            ]
+        ]
+    ]
+
+ENDCONTEXT

@@ -1,0 +1,188 @@
+CONTEXT "Bankrekeningen - mandaten aanmaken"
+{- Dit bestand gaat over de gebruikersinterfaces die betrekking hebben op Mandaten,
+en de state-machinerie om tussen de verschillende (ook andere) interfaces te schakelen.
+De state-machinerie om nieuwe mandaten aan te maken, deze te veranderen e.d. is out of scope.
+Wel zal er een aantal buttons zijn die de requests hiervoor triggeren.
+-}
+
+--[Part of the navigation statemachine that switches to and from session context 'Mandaten']
+sCtxtMandatenReq :: SESSION * SESSION [PROP] -- Request to switch to session context = 'Mandaten'
+sCtxtIsMandaten  :: SESSION * SESSION [PROP] -- Property that session context = 'Mandaten'
+
+RULE "Integriteit van `sCtxtIsMandaten`": sCtxtIsMandaten |- sessionIsUser
+
+ROLE ExecEngine MAINTAINS "Prepare to switch to sCtxtIsMandaten"
+RULE "Prepare to switch to sCtxtIsMandaten": sCtxtMandatenReq |- sessionSwitchContextReq \/ sessionIsSwitchingContext
+VIOLATION (TXT "{EX} InsPair;sessionSwitchContextReq;SESSION;", SRC I, TXT ";SESSION;", TGT I
+-- Clean up the 'Mandaten'-context:
+          ,TXT "{EX} DelPair;sessionTechMandaat;SESSION;", SRC I, TXT ";TechMandaat;", TGT sessionTechMandaat -- annuleer ongecommitteerde mandaten
+)
+ROLE ExecEngine MAINTAINS "Service sCtxtMandatenReq"
+RULE "Service sCtxtMandatenReq": sCtxtMandatenReq /\ sCtxtIsNone |- sCtxtIsMandaten-sCtxtMandatenReq
+VIOLATION (TXT "{EX} DelPair;sCtxtIsNone;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sessionIsSwitchingContext;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sessionBrekSelected;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sCtxtMandatenReq;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sCtxtIsMandaten;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sessionBankrekeningen;SESSION;", SRC I, TXT ";Bankrekening;", TGT sessionAccount;brekMandateerAccount~
+)
+
+--[Nieuw mandaat aanvragen voor specifieke bankrekening]
+
+--[INTERFACE]
+ROLE ExecEngine MAINTAINS "DelPair sessionTechMandaat"
+RULE "DelPair sessionTechMandaat": sessionTechMandaat |- sessionAccount;brekMandateerAccount~;tmdBrek~
+VIOLATION (TXT "{EX} DelPair;sessionTechMandaat;SESSION;", SRC I, TXT ";TechMandaat;", TGT I)
+
+POPULATION isInvisible CONTAINS [ ("Mandaten", "Mandaten") ]
+POPULATION ifcTitle CONTAINS [ ("Mandaten", "Mandaten") ]
+INTERFACE "Mandaten" FOR User: "_SESSION";sCtxtIsMandaten cRud BOX <RAW form>
+    [ "Header/Title": V;"Mandaten"[InterfaceMetaData] cRud
+    , "Button Bar": I INTERFACE "UserHomeButtonBar"
+    , "horizontale lijn": TXT "<hr/>"
+    , "Als er niets te mandateren is": I - sessionBankrekeningen;sessionBankrekeningen~ cRud BOX <RAW form>
+        [ Message: TXT "Er zijn geen bankrekeningen waar u bevoegd bent te mandateren."
+        ]
+    , "Als er gemandateerd mag worden": I /\ sessionBankrekeningen;sessionBankrekeningen~ cRud BOX <RAW form>
+        [ "SessionTechMandaat": sessionTechMandaat cRud BOX <TABLE hideOnNoRecords>
+            [ "Voor wie is het mandaat": I cRud BOX <RAW table>
+                [ "Mandaat Account": I[TechMandaat] cRud BOX <OBJECTDROPDOWN>
+                    [ selectfrom:   (  V[TechMandaat*Account];(I-accIsSysAdmin)
+                                     - tmdBrek;(tmdBrek~;tmdMandaatAccount \/ brekBeheerAccount)
+                                    )  cRud <AccountOneLineSummary>
+                    , setrelation: tmdMandaatAccount cRUd
+                    , instruction: TXT "Kies account van de te mandateren actor"
+                    ]
+                ]
+            , "Gemandateerde": tmdMandaatAccount cRud <AccountOneLineSummary>
+            , "Toegestane handelingen onder dit mandaat": I cRud BOX <RAW table>
+                [ "TXT:Inzien": TXT "&nbsp;&nbsp;Inzien:"
+                , "Inzien": tmdVoorInzien cRUd
+                , "TXT:Overmaken": TXT "&nbsp;&nbsp;Overmaken:"
+                , "Overmaken": tmdVoorOvermaken cRUd
+                , "TXT:Mandateren": TXT "&nbsp;&nbsp;Mandateren:"
+                , "Mandateren": tmdVoorMandateren cRUd
+                -- , "TXT:Doormandateren": TXT "&nbsp;&nbsp;Doormandateren:"
+                -- , "DoorMandateren": tmdIsTeMandateren cRUd
+                ]
+            , " ": I cRud BOX <RAW table>
+                [ "Committeren": I[TechMandaat] cRud BOX <PROPBUTTON>
+                    [ label: TXT "Commiteren"
+                    , property : tmdCommitReq cRUd
+                    , disabled : I - tmdMandaatAccount;tmdMandaatAccount~
+                    ]
+                , " ": TXT "&nbsp;"
+                , "Annuleren": I[TechMandaat] cRud BOX <PROPBUTTON>
+                    [ label : TXT"Annuleren"
+                    , property : tmdDeleteReq cRUd
+                    ]
+                ]
+            ]
+        , "Mandaten van mij als:": sessionAccount cRud BOX <TABS title="Mandaten in mijn rol als:">
+            [ "Mandaatgever": I cRud BOX <FORM hideLabels>
+                [ "Van mijn eigen bankrekeningen": brekBeheerAccount~ cRud BOX <TABLE hideOnNoRecords title="Door u beheerde bankrekeningen">
+                    [ "Bankrekening": I cRud BOX <RAW table>
+                        [ "rekening": I cRud BOX <TABLE noHeader> [ "Summary": I cRud <BrekTwoLineSummary> ] ]
+                    , " ": I cRud BOX <PROPBUTTON>
+                        [ label: TXT "Nieuw Mandaat"
+                        , property: brekNieuwMandaatReq cRUd
+                        , disabled: brekNieuwMandaatReq cRud
+                        ]
+                    , "Mandaten": I cRud BOX <RAW table>
+                        [ "Geen mandaten": I - tmdBrek~;tmdIsCommitted;tmdBrek cRud BOX <TABLE noHeader hideOnNoRecords>
+                            [ "Message": TXT "Er bestaan  geen mandaten voor deze rekening" ]
+                        , "Mandaten voor de bankrekening": tmdBrek~;tmdIsCommitted cRuD BOX <TABLE noHeader hideOnNoRecords>
+                            [ "TXT:Actief": TXT "&nbsp;&nbsp;Actief:"
+                            , "Actief": tmdIsActief cRUd
+                            , "TXT:Inzien": TXT "&nbsp;&nbsp;Inzien:"
+                            , "Inzien": tmdVoorInzien cRUd
+                            , "TXT:Overmaken": TXT "&nbsp;&nbsp;Overmaken:"
+                            , "Overmaken": tmdVoorOvermaken cRUd
+                            , "TXT:Mandateren": TXT "&nbsp;&nbsp;Mandateren:"
+                            , "Mandateren": tmdVoorMandateren cRUd
+                            -- , "TXT:Doormandateren": TXT "&nbsp;&nbsp;Doormandateren:"
+                            -- , "DoorMandateren": tmdIsTeMandateren cRUd
+                            , "TXT:Mandaatgever": TXT "&nbsp;&nbsp;Mandaatgever:"
+                            , "Mandaatgever": tmdGeverAccount cRud <AccountOneLineSummary>
+                            , "TXT:Gemandateerde": TXT "&nbsp;&nbsp;Gemandateerde:"
+                            , "Gemandateerde": tmdMandaatAccount cRud <AccountOneLineSummary>
+                            ]
+                        ]
+                    ]
+                , "Van andermans bankrekeningen": (brekMandateerAccount-brekBeheerAccount)~
+                                    cRud BOX <TABLE hideOnNoRecords title="Bankrekeningen van derden waarvoor u mandaten mag beheren">
+                    [ "Bankrekening": I cRud BOX <RAW table>
+                        [ "rekening": I cRud BOX <TABLE noHeader> [ "Summary": I cRud <BrekTwoLineSummary> ] ]
+                    , " ": I cRud BOX <PROPBUTTON>
+                        [ label: TXT "Nieuw Mandaat"
+                        , property: brekNieuwMandaatReq cRUd
+                        , disabled: brekNieuwMandaatReq cRud
+                        ]
+                    , "Mandaten": I cRud BOX <RAW table>
+                        [ "Geen mandaten": I - tmdBrek~;tmdIsCommitted;tmdBrek cRud BOX <TABLE noHeader hideOnNoRecords>
+                            [ "Message": TXT "Er bestaan  geen mandaten voor deze rekening" ]
+                        , "Mandaten voor de bankrekening": tmdBrek~;tmdIsCommitted cRuD BOX <TABLE noHeader hideOnNoRecords>
+                            [ "TXT:Actief": TXT "&nbsp;&nbsp;Actief:"
+                            , "Actief": tmdIsActief cRUd
+                            , "TXT:Inzien": TXT "&nbsp;&nbsp;Inzien:"
+                            , "Inzien": tmdVoorInzien cRUd
+                            , "TXT:Overmaken": TXT "&nbsp;&nbsp;Overmaken:"
+                            , "Overmaken": tmdVoorOvermaken cRUd
+                            , "TXT:Mandateren": TXT "&nbsp;&nbsp;Mandateren:"
+                            , "Mandateren": tmdVoorMandateren cRUd
+                            -- , "TXT:Doormandateren": TXT "&nbsp;&nbsp;Doormandateren:"
+                            -- , "DoorMandateren": tmdIsTeMandateren cRUd
+                            , "TXT:Mandaatgever": TXT "&nbsp;&nbsp;Mandaatgever:"
+                            , "Mandaatgever": tmdGeverAccount cRud <AccountOneLineSummary>
+                            , "TXT:Gemandateerde": TXT "&nbsp;&nbsp;Gemandateerde:"
+                            , "Gemandateerde": tmdMandaatAccount cRud <AccountOneLineSummary>
+                            ]
+                        ]
+                    ]
+                ]
+
+            , "Mandatant": I[Account] cRud BOX <RAW form>
+                [ "Gebruiker is geen mandatant":
+                    I - tmdMandaatAccount~;tmdIsCommitted;tmdMandaatAccount cRud BOX <TABLE noHeader hideOnNoRecords>
+                    [ "Message": TXT "U bent nergens voor gemandateerd" ]
+                , "Gebruiker is wel mandatant": tmdMandaatAccount~;tmdIsCommitted;tmdBrek cRud BOX <TABLE hideOnNoRecords >
+                    [ "Bankrekening": I cRud BOX <RAW table>
+                        [ "rekening": I cRud BOX <TABLE noHeader> [ "Summary": I cRud <BrekTwoLineSummary> ] ]
+                    , "U bent gemandateerd voor": I cRud BOX <RAW table>
+                        [ "Geen mandaten": I - tmdBrek~;tmdIsCommitted;tmdBrek cRud BOX <TABLE noHeader hideOnNoRecords>
+                            [ "Message": TXT "Er bestaan  geen mandaten voor deze rekening" ]
+                        , "Wel mandaten": tmdBrek~;tmdIsCommitted;tmdIsActief /\ V;"_SESSION";sessionAccount;tmdMandaatAccount~ cRud BOX <TABLE noHeader hideOnNoRecords>
+                            [ "TXT:Inzien": TXT "&nbsp;&nbsp;Inzien:"
+                            , "Inzien": tmdVoorInzien cRud
+                            , "TXT:Overmaken": TXT "&nbsp;&nbsp;Overmaken:"
+                            , "Overmaken": tmdVoorOvermaken cRud
+                            , "TXT:Mandateren": TXT "&nbsp;&nbsp;Mandateren:"
+                            , "Mandateren": tmdVoorMandateren cRud
+                            -- , "TXT:Doormandateren": TXT "&nbsp;&nbsp;Doormandateren:"
+                            -- , "DoorMandateren": tmdIsTeMandateren cRud
+                            , "TXT:Mandaatgever": TXT "&nbsp;&nbsp;Mandaatgever:"
+                            , "Mandaatgever": tmdGeverAccount cRud <AccountOneLineSummary>
+                            -- , "TXT:Gemandateerde": TXT "&nbsp;&nbsp;Gemandateerde:"
+                            -- , "Gemandateerde": tmdMandaatAccount cRud <AccountOneLineSummary>
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+
+--[Bijdrage van Transacties aan de algemene ButtonBar]
+INTERFACE "MandatenButtonBar" FOR SYSTEM: "_SESSION";sessionIsUser cRud BOX <RAW table>
+    [ "Andere contexten": I-sCtxtIsMandaten cRud BOX <PROPBUTTON>
+        [ label: TXT "Mandateren"
+        , property: sCtxtMandatenReq cRUd
+        , hide: sCtxtIsMandaten cRud
+        , disabled: I - sessionAccount;brekMandateerAccount~;V cRud
+        , disabledpopovertext: TXT "U heeft geen rechten om te mandateren."
+        ]
+    -- , "Context=Mandaten": sCtxtIsMandaten cRud BOX <RAW table>
+    --     [ "spatie": TXT "&nbsp;"
+    --     ]
+    ]
+ENDCONTEXT

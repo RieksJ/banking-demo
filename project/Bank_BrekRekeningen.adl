@@ -1,0 +1,92 @@
+CONTEXT "Bankrekeningen (generiek)"
+
+-- Geldigheid van Bankrekeningtypes moet per bank worden geregeld. Met onderstaande populatie kunnen we onze demo al doen.
+POPULATION BrekType CONTAINS [ "spaarrekening", "betaalrekening", "zakelijke rekening" ]
+
+--[Bankrekeningen]
+brekBank          :: Bankrekening * Bank [UNI,TOT] -- Bank die het geld beheert dat op de rekening staat.
+brekIBAN          :: Bankrekening * IBAN [INJ,UNI] -- International Bank Account Number, die de rekening identificeert.
+brekType          :: Bankrekening * BrekType [UNI] -- Soort rekening, bijv. betaalrekening, zakelijke rekening, spaarrekening.
+brekHouder        :: Bankrekening * Party    [UNI] -- Party die eigenaar is van het geld dat op de bankrekening staat.
+brekHouderRef     :: Bankrekening * PartyRef [UNI] -- Een naam waarmee de rekeninghouder wordt aangeduid.
+brekBeheerAccount :: Bankrekening * Account        -- Account van de actor(en) die de rekening beheert en er dus alles mee mag.
+brekNaam          :: Bankrekening * Tekst    [UNI] -- Naam waaronder de rekeningbeheerder deze rekening kent.
+brekSaldo         :: Bankrekening * Bedrag   [UNI] -- saldo (obv van alle verwerkte transacties).
+brekKredLimiet    :: Bankrekening * Bedrag   [UNI] -- het bedrag dat de rekening 'rood' mag staan.
+brekStartDatum    :: Bankrekening * Datum    [UNI] -- Datum waarop de bankrekening is aangemaakt.
+
+-- EQUIVALENCE brekIsMine[Bankrekening] [PROP] == I /\ brekBank;orgRef;ownerRef~;V
+brekIsMine :: Bankrekening * Bankrekening [PROP] -- De bankrekening is van de bank die de eigenaar is van deze bank-applicatie
+brekIsNotMine :: Bankrekening * Bankrekening [PROP] -- Deze is nodig om na te gaan of de 'Mine'-property al is vastgesteld (nodig bij initialisatie van de applicatie)
+ROLE ExecEngine MAINTAINS "InsPair brekIsMine"
+RULE "InsPair brekIsMine": I /\ brekBank[Bankrekening*Bank];orgRef[Organization*OrgRef];ownerRef[AorP*PartyRef]~;V[I_Am*Bankrekening] |- brekIsMine
+VIOLATION (TXT "{EX} InsPair;brekIsMine;Bankrekening;", SRC I, TXT ";Bankrekening;", TGT I
+          ,TXT "{EX} DelPair;brekIsNotMine;Bankrekening;", SRC I, TXT ";Bankrekening;", TGT I
+)
+ROLE ExecEngine MAINTAINS "InsPair brekIsNotMine"
+RULE "InsPair brekIsNotMine": I - brekBank[Bankrekening*Bank];orgRef[Organization*OrgRef];ownerRef[AorP*PartyRef]~;V[I_Am*Bankrekening] |- brekIsNotMine
+VIOLATION (TXT "{EX} InsPair;brekIsNotMine;Bankrekening;", SRC I, TXT ";Bankrekening;", TGT I
+          ,TXT "{EX} DelPair;brekIsMine;Bankrekening;", SRC I, TXT ";Bankrekening;", TGT I
+)
+
+--[Service: Initialiseren van een Bankrekening]
+{- Dit bestaat uit:
+-- Genereren van unieke IBAN-nummers;
+-- Deze relateren aan een BankCode;
+-- Initialiseren van Bankrekening-attributen die aanwezig moeten zijn
+-}
+brekIsGeinitialiseerd :: Bankrekening*Bankrekening [PROP]
+RULE "Alle bankrekeningen van deze applicatie moeten zijn geinitialiseerd": brekIsMine |- brekIsGeinitialiseerd
+
+--POPULATION systemRole CONTAINS [ ("BrekInitializer", "BrekInitializer") ]
+ROLE ExecEngine MAINTAINS "Initialiseer de rekeningen van deze bank"
+RULE "Initialiseer de rekeningen van deze bank": brekIsMine /\ brekType;brekType~ |- brekIBAN;brekIBAN~
+VIOLATION (TXT "{EX} InsPair;brekIBAN;Bankrekening;", SRC I, TXT ";IBAN;{php}GenerateDutchIBAN('", TGT brekBank;bankCode, TXT "')"
+          ,TXT "{EX} InsPair;brekValidateIBANReq;Bankrekening;", SRC I, TXT ";Bankrekening;", TGT I
+          ,TXT "{EX} InsPair;brekSaldo;Bankrekening;", SRC I, TXT ";Bedrag;0.00"
+          ,TXT "{EX} InsPair;brekKredLimiet;Bankrekening;", SRC I, TXT ";Bedrag;0.00"
+          ,TXT "{EX} InsPair;brekStartDatum;Bankrekening;", SRC I, TXT ";Datum;{php}date(DATE_ISO8601)"
+)
+brekValidateIBANReq :: Bankrekening*Bankrekening [PROP]
+ROLE ExecEngine MAINTAINS "Regenerate IBAN if not unique"
+RULE "Regenerate IBAN if not unique": brekValidateIBANReq;brekIBAN;brekIBAN~ |- brekValidateIBANReq
+VIOLATION (TXT "{EX} InsPair;brekIBAN;Bankrekening;", SRC I, TXT ";IBAN;{php}GenerateDutchIBAN('", TGT brekBank;bankCode, TXT "')")
+
+ROLE ExecEngine MAINTAINS "Terminate regeneration once IBAN is unique"
+RULE "Terminate regeneration once IBAN is unique": brekValidateIBANReq |- brekIBAN;brekIBAN~;-I
+VIOLATION (TXT "{EX} InsPair;brekIsGeinitialiseerd;Bankrekening;", SRC I, TXT ";Bankrekening;", SRC I
+          ,TXT "{EX} DelPair;brekValidateIBANReq;Bankrekening;", SRC I, TXT ";Bankrekening;", SRC I
+)
+ROLE ExecEngine MAINTAINS "DelPair brekIsGeinitialiseerd"
+RULE "DelPair brekIsGeinitialiseerd": brekIsGeinitialiseerd |- brekIBAN;brekIBAN~
+VIOLATION (TXT "{EX} DelPair;brekIsGeinitialiseerd;Bankrekening;", SRC I, TXT ";Bankrekening;", TGT I)
+
+--[brekIsClean: all required/generated data is available in a Bankrekening]
+brekIsClean :: Bankrekening * Bankrekening [PROP] -- Property of a Bankrekening that it is actually operational
+ROLE ExecEngine MAINTAINS "Eqv-InsPair brekIsClean"
+RULE "Eqv-InsPair brekIsClean":
+    brekIsGeinitialiseerd /\ brekHouderRef;brekHouderRef~
+-- Tijdens DB-initialisatie moeten we voorkomen dat er met bankrekeningen gewerkt kan worden
+-- die van andere banken zijn, nog niet zijn verwijderd uit de populatie, en toch als 'clean worden aangemerkt'.
+-- De volgende clause is dus alleen tijdens de initialisatiefase van de applicatie nodig:
+    /\  (brekBeheerAccount;brekBeheerAccount~ \/ brekIsNotMine)
+|- brekIsClean
+VIOLATION (TXT "{EX} InsPair;brekIsClean;Bankrekening;", SRC I, TXT ";Bankrekening;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair brekIsClean"
+RULE "Eqv-DelPair brekIsClean":
+    brekIsClean
+|-  brekIsGeinitialiseerd /\ brekHouderRef;brekHouderRef~
+    /\ (brekBeheerAccount;brekBeheerAccount~ \/ brekIsNotMine)
+VIOLATION (TXT "{EX} DelPair;brekIsClean;Bankrekening;", SRC I, TXT ";Bankrekening;", TGT I)
+
+-- Het 'geinitialiseerd' zijn houdt in dat we kunnen vaststellen of brekIsMine geldt of niet.
+ROLE ExecEngine MAINTAINS "Bankrekeningen (met IBAN) bestaan alleen als ze bij onze bank horen"
+RULE "Bankrekeningen (met IBAN) bestaan alleen als ze bij onze bank horen": brekIsNotMine |- -I
+VIOLATION (TXT "{EX} DelAtom;Bankrekening;", SRC I)
+
+--[Representations]
+REPRESENT IBAN   TYPE ALPHANUMERIC
+REPRESENT Bedrag TYPE FLOAT
+REPRESENT Datum  TYPE DATE
+
+ENDCONTEXT

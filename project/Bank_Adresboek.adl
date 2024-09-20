@@ -1,0 +1,68 @@
+CONTEXT "AdresBoek"
+
+VIEW ABEOneLineSummary: AdresBoekEntry
+{ "naam": abeIBAN
+, " (": TXT " t.n.v. "
+, "iban": abeHouderRef
+-- , ")": TXT ")"
+} ENDVIEW
+
+--[AdresBoekEntries]
+-- Dat zijn IBAN-Tenaamstelling-combinaties zoals die binnen de context van 1 Bankrekening bekend zijn.
+IDENT AdresBoekEntry: AdresBoekEntry(abeBrek,abeIBAN)
+abeBrek :: AdresBoekEntry * Bankrekening [UNI,TOT] -- Bankrekening in de context waarvan de AdresBoekEntry bestaat
+abeIBAN :: AdresBoekEntry * IBAN [UNI,TOT]
+abeHouderRef :: AdresBoekEntry * PartyRef [UNI,TOT]
+abeNaam :: AdresBoekEntry * Tekst [UNI] -- Naam waaronder in de context van de Bankrekening rekeningbeheerder deze rekening kent.
+
+-- ROLE ExecEngine MAINTAINS "InsAtom AdresBoekEntry"
+-- RULE "InsAtom AdresBoekEntry": brekIsGeinitialiseerd |- abeBrek~;abeBrek
+-- VIOLATION (TXT "{EX} InsAtom;AdresBoekEntry"
+--           ,TXT "{EX} InsPair;abeBrek;AdresBoekEntry;_NEW;Bankrekening;", SRC I
+--           ,TXT "{EX} InsPair;abeIBAN;AdresBoekEntry;_NEW;IBAN;", TGT brekIBAN
+--           ,TXT "{EX} InsPair;abeHouderRef;AdresBoekEntry;_NEW;PartyRef;", TGT brekHouderRef
+-- )
+ROLE ExecEngine MAINTAINS "DelAtom AdresBoekEntry" -- als-ie volledig is ingevuld en niet gaat over de eigen abeBrek
+RULE "DelAtom AdresBoekEntry": I |- abeBrek;brekIBAN;-I;abeIBAN~ /\ abeHouderRef;abeHouderRef~
+VIOLATION (TXT "{EX} DelAtom;AdresBoekEntry;", SRC I)
+
+--[AdresBoekEntries aanvullen als dat mogelijk is]
+-- We kunnen alleen maar een ABE maken als die ook een HouderRef met zich meebrengt.
+ROLE ExecEngine MAINTAINS "Alle andere bankrekeningen die dezelfde beheerder hebben, staan in het adresboek"
+RULE "Alle andere bankrekeningen die dezelfde beheerder hebben, staan in het adresboek":
+   (brekBeheerAccount;(brekBeheerAccount\/brekStakeholderAccount)~ - I);brekIsClean
+|- abeBrek~;(abeIBAN;brekIBAN~ /\ abeHouderRef;brekHouderRef~)
+VIOLATION (TXT "{EX} InsAtom;AdresBoekEntry"
+          ,TXT "{EX} InsPair;abeBrek;AdresBoekEntry;_NEW;Bankrekening;", SRC I
+          ,TXT "{EX} InsPair;abeIBAN;AdresBoekEntry;_NEW;IBAN;", TGT  brekIBAN
+          ,TXT "{EX} InsPair;abeHouderRef;AdresBoekEntry;_NEW;PartyRef;", TGT brekHouderRef
+          ,TXT "{EX} InsPair;abeNaam;AdresBoekEntry;_NEW;Tekst;", TGT brekNaam
+)
+
+--[Toevoegen van een AdresBoekEntry vanuit een betaalopdracht]
+btloAbeStoreReq :: Betaalopdracht * Betaalopdracht [PROP]
+ROLE ExecEngine MAINTAINS "Deny btloAbeStoreReq"
+RULE "Deny btloAbeStoreReq":
+    btloAbeStoreReq |- -(btloNaarIBAN;abeIBAN~;abeHouderRef;btloNaarHouderRef~)
+VIOLATION (TXT "{EX} DelPair;btloAbeStoreReq;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I)
+
+ROLE ExecEngine MAINTAINS "service btloAbeStoreReq"
+RULE "service btloAbeStoreReq": btloAbeStoreReq |- btloNaarIBAN;abeIBAN~;abeHouderRef;btloNaarHouderRef~
+VIOLATION (TXT "{EX} InsAtom;AdresBoekEntry"
+          ,TXT "{EX} InsPair;abeBrek;AdresBoekEntry;_NEW;Bankrekening;", TGT btloVanBrek
+          ,TXT "{EX} InsPair;abeIBAN;AdresBoekEntry;_NEW;IBAN;", TGT btloNaarIBAN
+          ,TXT "{EX} InsPair;abeHouderRef;AdresBoekEntry;_NEW;PartyRef;", TGT btloNaarHouderRef
+          ,TXT "{EX} DelPair;btloAbeStoreReq;Betaalopdracht;", SRC I, TXT ";Betaalopdracht;", TGT I
+)
+
+--[Invullen van gegevens in een betaalopdracht]
+ROLE ExecEngine MAINTAINS "Insert AdresBoekEntry contents in Betaalopdracht"
+RULE "Insert AdresBoekEntry contents in Betaalopdracht": btloNaarAbe |- btloNaarIBAN;abeIBAN~ /\ btloNaarHouderRef;abeHouderRef~
+VIOLATION (TXT "{EX} InsPair;btloNaarIBAN;Betaalopdracht;", SRC I, TXT ";IBAN;", TGT abeIBAN
+          ,TXT "{EX} InsPair;btloNaarHouderRef;Betaalopdracht;", SRC I, TXT ";PartyRef;", TGT abeHouderRef
+-- Depopuleer btloNaarAbe zodat gebruiker de IBAN en HouderRef daarna nog/weer kan veranderen.
+-- Dat is bijvoorbeeld het geval als de bankrekening 'isMine' en die heeft een andere HouderRef
+          ,TXT "{EX} DelPair;btloNaarAbe;Betaalopdracht;", SRC I, TXT ";AdresBoekEntry;", TGT I
+)
+
+ENDCONTEXT

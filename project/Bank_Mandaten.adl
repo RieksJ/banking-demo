@@ -1,0 +1,83 @@
+CONTEXT "Technische Mandaten"
+
+IDENT TechMandaten: TechMandaat(tmdBrek,tmdMandaatAccount)
+tmdBrek           :: TechMandaat * Bankrekening [UNI,TOT] -- Bankrekening waar het mandaat over gaat
+tmdGeverAccount   :: TechMandaat * Account [UNI] -- Account waaronder deze bevoegdheden zijn verleend
+tmdMandaatAccount :: TechMandaat * Account [UNI] -- Account waaraan de handelingen zijn gemandateerd
+tmdIsActief       :: TechMandaat * TechMandaat [PROP] -- Het mandaat is actief (geldig)
+tmdIsTeMandateren :: TechMandaat * TechMandaat [PROP] -- Het mandaat mag worden 'doorgemandateerd'.
+tmdVoorInzien     :: TechMandaat * TechMandaat [PROP] -- Het mandaat is gegeven voor de actie 'Inzien'
+tmdVoorOvermaken  :: TechMandaat * TechMandaat [PROP] -- Het mandaat is gegeven voor de actie 'Overmaken'
+tmdVoorMandateren :: TechMandaat * TechMandaat [PROP] -- Het mandaat is gegeven voor de actie 'Mandateren'
+tmdVoorBeheer     :: TechMandaat * TechMandaat [PROP] -- Het mandaat is gegeven voor de actie 'Beheren'
+
+--[Proces]
+-- Een eenvoudig proces: TechMandaat aanmaken totdat hij 'committed' is;
+-- daarna kun je hem blijven wijzigen totdat hij wordt weggegooid.
+sessionTechMandaat :: SESSION * TechMandaat [UNI] -- het TechMandaat dat wordt opgezet maar nog niet gecommitteerd is.
+tmdIsCommitted :: TechMandaat * TechMandaat [PROP] -- eigenschap van een TechMandaat dat-ie gecommitteerd is.
+
+RULE "Een Bankrekening mag hoogstens 1 niet-gecommitterd TechMandaat hebben":
+   (I-tmdIsCommitted);tmdBrek;tmdBrek~;(I-tmdIsCommitted) |- I
+
+ROLE ExecEngine MAINTAINS "Een niet-gecommitteerd TechMandaat moet in bewerking zijn"
+RULE "Een niet-gecommitteerd TechMandaat moet in bewerking zijn":
+   (I - tmdIsCommitted) |- tmdBrek;brekMandateerAccount;sessionAccount~;sessionTechMandaat
+VIOLATION (TXT "{EX} DelAtom;TechMandaat;", SRC I)
+
+ROLE ExecEngine MAINTAINS "Elk TechMandaat moet bij een rekening van deze bank behoren" -- deze RULE gooit geen spullen nodeloos weg bij initialisaties
+RULE "Elk TechMandaat moet bij een rekening van deze bank behoren": tmdBrek |- tmdBrek;brekIsMine
+VIOLATION (TXT "{EX} DelAtom;TechMandaat;", SRC I)
+
+--$ Requesting a TechMandaat for a specific Bankrekening
+brekNieuwMandaatReq :: Bankrekening * Bankrekening [PROP] -- Trigger waarmee een TechMandaat kan worden gecreerd voor een specifieke bankrekening
+ROLE ExecEngine MAINTAINS "Deny brekNieuwMandaatReq"
+RULE "Deny brekNieuwMandaatReq":
+   brekNieuwMandaatReq |- brekMandateerAccount;sessionAccount~;"_SESSION";sessionBankrekeningen
+VIOLATION (TXT "{EX} DelPair;brekNieuwMandaatReq;Bankrekening;", SRC I, TXT ";Bankrekening;", SRC I
+          ,TXT "{EX} InsPair;sessionMsgIfcText;SESSION;", SRC V;"_SESSION"[SESSION]
+            , TXT ";IfcText;Deny brekNieuwMandaatReq voorw mandaat voor ", SRC brekIBAN, TXT " (", SRC brekHouderRef, TXT ")."
+)
+ROLE ExecEngine MAINTAINS "Service brekNieuwMandaatReq"
+RULE "Service brekNieuwMandaatReq":
+   "_SESSION";sessionBankrekeningen;brekNieuwMandaatReq /\ sessionAccount;brekMandateerAccount~
+|- sessionTechMandaat;(I-tmdIsCommitted);tmdBrek
+VIOLATION (TXT "{EX} InsAtom;TechMandaat"
+          ,TXT "{EX} InsPair;sessionTechMandaat;SESSION;", SRC I, TXT ";TechMandaat;_NEW"
+          ,TXT "{EX} InsPair;sessionBrek;SESSION;", SRC I, TXT ";Bankrekening;", TGT I
+          ,TXT "{EX} InsPair;tmdBrek;TechMandaat;_NEW;Bankrekening;", TGT I
+          ,TXT "{EX} DelPair;brekNieuwMandaatReq;Bankrekening;", TGT I, TXT ";Bankrekening;", TGT I
+)
+--$ Committing to a TechMandaat
+tmdCommitReq :: TechMandaat * TechMandaat [PROP]
+ROLE ExecEngine MAINTAINS "Deny tmdCommitReq" -- NB: zulke TechMandaten zijn per def. in bewerking (met een geautoriseerd account)
+RULE "Deny tmdCommitReq": tmdCommitReq |- I /\ tmdBrek;tmdBrek~ /\ sessionTechMandaat~;sessionTechMandaat /\ -tmdIsCommitted
+VIOLATION (TXT "{EX} DelPair;tmdCommitReq;TechMandaat;", SRC I, TXT ";TechMandaat;", SRC I)
+
+ROLE ExecEngine MAINTAINS "Service tmdCommitReq"
+RULE "Service tmdCommitReq":
+   (tmdCommitReq-tmdIsCommitted);(sessionTechMandaat~;sessionAccount /\ tmdBrek;brekMandateerAccount) |- tmdGeverAccount
+VIOLATION (TXT "{EX} InsPair;tmdGeverAccount;TechMandaat;", SRC I, TXT ";Account;", TGT I
+          ,TXT "{EX} InsPair;tmdIsActief;TechMandaat;", SRC I, TXT ";TechMandaat;", SRC I
+          ,TXT "{EX} InsPair;tmdIsCommitted;TechMandaat;", SRC I, TXT ";TechMandaat;", SRC I
+          ,TXT "{EX} DelPair;tmdCommitReq;TechMandaat;", SRC I, TXT ";TechMandaat;", SRC I
+          ,TXT "{EX} DelPair;sessionTechMandaat;SESSION;", SRC sessionTechMandaat~;"_SESSION", TXT ";TechMandaat;", SRC I
+)
+--$ Deleting a TechMandaat
+tmdDeleteReq :: TechMandaat * TechMandaat [PROP]
+ROLE ExecEngine MAINTAINS "Deny tmdDeleteReq" -- de 'brekIsMine' zorgt dat via Excel geimporteerde mandaten van andere banken worden verwijderd.
+RULE "Deny tmdDeleteReq": tmdDeleteReq |- tmdBrek;brekIsMine;brekMandateerAccount;sessionAccount~;"_SESSION";V
+VIOLATION (TXT "{EX} DelPair;tmdDeleteReq;TechMandaat;", SRC I, TXT ";TechMandaat;", TGT I)
+ROLE ExecEngine MAINTAINS "Service tmdDeleteReq"
+RULE "Service tmdDeleteReq": tmdDeleteReq /\ tmdBrek;brekIsMine;brekMandateerAccount;sessionAccount~;sessionTechMandaat |- -I
+VIOLATION (TXT "{EX} DelAtom;TechMandaat;", SRC I)
+
+--$Deactivating a TechMandaat
+-- Bij het overlijden van heen rekeninghouder is het gebruikelijk dat de mandaten die deze (als Actor) heeft uitgegeven
+-- worden ingetrokken. We generaliseren dit tot de volgende regel:
+ROLE ExecEngine MAINTAINS "Een mandaat wordt gedeactiveerd als het Account van de mandaatgever niet actief is"
+RULE "Een mandaat wordt gedeactiveerd als het Account van de mandaatgever niet actief is":
+   tmdGeverAccount;(I-accIsActive) |- (I-tmdIsActief);tmdGeverAccount
+VIOLATION (TXT "{EX} DelPair;TechMandaat;", SRC I, TXT ";TechMandaat;", SRC I)
+
+ENDCONTEXT

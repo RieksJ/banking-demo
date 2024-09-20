@@ -1,0 +1,47 @@
+CONTEXT "Bankrekeningen Interfacing"
+
+VIEW BrekTwoLineSummary: Bankrekening
+{ "item1": brekIBAN
+, "crlf1": I
+, "pre2": TXT " ("
+, "item2": brekHouderRef
+, "post2": TXT ")"
+} HTML TEMPLATE "View-ItemLines.html" ENDVIEW
+
+VIEW BrekOneLineSummary: Bankrekening
+{ "naam": brekIBAN
+, " (": TXT " ("
+, "iban": brekHouderRef
+, ")": TXT ")"
+} ENDVIEW
+
+VIEW BrekSaldoSummary: Bankrekening
+{ "rekening": TXT "Bankrekening: "
+, "IBAN": brekIBAN
+, " Saldo": TXT "  Saldo:"
+, "saldo": brekSaldo
+} ENDVIEW
+
+VIEW BegunstigdeTwoLineSummary: Betaalopdracht
+{ "item1": btloNaarIBAN
+, "crlf1": I
+, "pre2": TXT " ("
+, "item2": btloNaarHouderRef
+, "post2": TXT ")"
+} HTML TEMPLATE "View-ItemLines.html" ENDVIEW
+
+VIEW BegunstigdeOneLineSummary: Betaalopdracht
+{ "naam": btloNaarIBAN
+, " (": TXT " ("
+, "iban": btloNaarHouderRef
+, ")": TXT ")"
+} ENDVIEW
+
+VIEW BrekID: Bankrekening
+{ "naam": brekNaam
+, " (": TXT " ("
+, "iban": brekIBAN
+, ")": TXT ")"
+} ENDVIEW
+
+ENDCONTEXT

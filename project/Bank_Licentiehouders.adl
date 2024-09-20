@@ -1,0 +1,47 @@
+CONTEXT "Bank_Licentiehouders" IN DUTCH
+-- Namen van banken e.d. worden gedefinieerd in file "Bank_BankEnRekeningenRegister.xlsx"
+
+CLASSIFY Bank ISA Organization
+bankCode :: Bank * BankCode [INJ,UNI,TOT] -- bijv. ABNA, ASNB, INGB, TRIO, SNSB, TRIO, etc.
+
+-- EQUIVALENCE bankIsMine[Bank] [PROP] == I[Bank] /\ I[I_Am];ownerRef;orgRef~
+bankIsMine :: Bank * Bank [PROP] -- define relation bankIsMine as shorthand for I[Bank] /\ I[I_Am];ownerRef;orgRef~
+ROLE ExecEngine MAINTAINS "Eqv-InsPair bankIsMine"
+RULE "Eqv-InsPair bankIsMine": I[Bank];orgRef /\ V[Bank*Actor];I[I_Am];ownerRef[AorP*PartyRef] |- bankIsMine;orgRef
+VIOLATION (TXT "{EX} InsPair;bankIsMine;Bank;", SRC I[Bank], TXT ";Bank;", SRC I[Bank])
+ROLE ExecEngine MAINTAINS "Eqv-DelPair bankIsMine"
+RULE "Eqv-DelPair bankIsMine": bankIsMine |- V[Bank*Actor];I[I_Am];ownerRef[AorP*PartyRef];orgRef~;I[Bank]
+VIOLATION (TXT "{EX} DelPair;bankIsMine;Bank;", SRC I[Bank], TXT ";Bank;", TGT I[Bank])
+
+--[IBANs]
+RULE "IBAN kan niet worden verwerkt omdat hij een onbekende BankCode heeft": ibanBankCode |- ibanBankCode;bankCode~;V
+
+ibanBankCode :: IBAN * BankCode [UNI] -- Relate the IBAN to its BankCode
+ROLE ExecEngine MAINTAINS "Associate IBAN with BankCode"
+RULE "Associate IBAN with BankCode": I[IBAN] |- ibanBankCode;ibanBankCode~
+VIOLATION (TXT "{EX} InsPair;ibanBankCode;IBAN;", SRC I, TXT ";BankCode;{php}substr('", SRC I, TXT "',4,4)")
+
+ibanBank :: IBAN * Bank [UNI] -- Relate the IBAN to its Bank
+ibanIsMine :: IBAN * IBAN [PROP] -- de bankrekening met deze IBAN wordt door deze applicatie bijgehouden.
+ROLE ExecEngine MAINTAINS "Associate IBAN with Bank"
+RULE "Associate IBAN with Bank": ibanBankCode;bankCode~ |- ibanBank
+VIOLATION (TXT "{EX} InsPair;ibanBank;IBAN;", SRC I, TXT ";Bank;", TGT I
+          ,TXT "{EX} InsPair;ibanIsMine;IBAN;", SRC I, TXT ";IBAN;", SRC (I /\ ibanBankCode;bankCode~;bankIsMine;V)
+)
+
+-- EQUIVALENCE ibanIsClean[IBAN] [PROP] == I /\ ibanBank;ibanBank~
+ibanIsClean :: IBAN * IBAN [PROP] -- Alle eigenschappen van de IBAN zijn bekend/berekend.
+ROLE ExecEngine MAINTAINS "Eqv-InsPair ibanIsClean"
+RULE "Eqv-InsPair ibanIsClean": I /\ ibanBank;ibanBank~ |- ibanIsClean
+VIOLATION (TXT "{EX} InsPair;ibanIsClean;IBAN;", SRC I, TXT ";IBAN;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair ibanIsClean"
+RULE "Eqv-DelPair ibanIsClean": ibanIsClean |- I /\ ibanBank;ibanBank~
+VIOLATION (TXT "{EX} DelPair;ibanIsClean;IBAN;", SRC I, TXT ";IBAN;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Detect illegal IBANs"
+RULE "Detect illegal IBANs": (I-brekIBAN~;brekIBAN);ibanBank;bankIsMine |- -V
+VIOLATION (TXT "{EX} DelAtom;IBAN;", SRC I
+          ,TXT "{EX} InsPair;sessionMsgIfcText;SESSION;", SRC V;"_SESSION"[SESSION], TXT ";IfcText;De IBAN hoort niet bij een bankrekening"
+)
+
+ENDCONTEXT

@@ -1,0 +1,183 @@
+CONTEXT Bank_BrekRegForm
+-- het gaat hier alleen om het invullen van een formulier zodat een rekening kan worden aangemaakt.
+-- het gaat hier OOK om het formulier te maken of verwijderen vanuit diverse contexten
+-- het gaat hier NIET om te toetsen of die dan wel aan de bedrijfsregels van de bank voldoen.
+
+--[SESSION en BrekRegForms (aanmaken, weggooien)]
+sessionBrekRegReq :: SESSION * SESSION [PROP] -- Verzoek (event) voor het aanvragen van een bankrekening
+sessionBrekRegForm :: SESSION * BrekRegForm [INJ,UNI] -- Registratieformulier op basis waarvan een bankrekening wordt aangevraagd
+
+sessionIsBrekReg :: SESSION * SESSION [PROP] -- Property dat we in de context sCtxtIsBrekBeheer een Brek aan het aanvragen zijn.
+ROLE ExecEngine MAINTAINS "Eqv-InsPair sessionIsBrekReg"
+RULE "Eqv-InsPair sessionIsBrekReg": "_SESSION" /\ sessionBrekRegForm;sessionBrekRegForm~ |- sessionIsBrekReg
+VIOLATION (TXT "{EX} InsPair;sessionIsBrekReg;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair sessionIsBrekReg"
+RULE "Eqv-DelPair sessionIsBrekReg": sessionIsBrekReg |- "_SESSION" /\ sessionBrekRegForm;sessionBrekRegForm~
+VIOLATION (TXT "{EX} DelPair;sessionIsBrekReg;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+
+-- In other contexts than `sCtxtIsBrekBeheer`, `sessionIsBrekReg` signals we (must) switch to the BrekBeheer context
+ROLE ExecEngine MAINTAINS "Vanuit andere context een rekening aanvragen"
+RULE "Vanuit andere context een rekening aanvragen": -- dit betekent dat we eerst naar de Beheercontext schakelen.
+    sessionBrekRegReq - sCtxtIsBrekBeheer |- sCtxtBrekBeheerReq
+VIOLATION (TXT "{EX} InsPair;sCtxtBrekBeheerReq;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+
+-- In the context `sCtxtIsBrekBeheer`, `sessionIsBrekReg` signals we (must) have a BrekRegForm.
+ROLE ExecEngine MAINTAINS "Service sessionBrekRegReq"
+RULE "Service sessionBrekRegReq":
+    sessionBrekRegReq /\  sCtxtIsBrekBeheer |- sessionBrekRegForm;sessionBrekRegForm~
+VIOLATION (TXT "{EX} InsAtom;BrekRegForm"
+          ,TXT "{EX} InsPair;sessionBrekRegForm;SESSION;", SRC I, TXT ";BrekRegForm;_NEW"
+          ,TXT "{EX} InsPair;sessionIsBrekReg;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} DelPair;sessionBrekRegReq;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          )
+-- Cancelling a registration discards the BrekRegForm and switches to the default context
+brfCancelReq :: BrekRegForm * BrekRegForm [PROP]
+ROLE ExecEngine MAINTAINS "Cancel filling in of BrekRegForms"
+RULE "Cancel filling in of BrekRegForms": sessionBrekRegForm;brfCancelReq |- -V
+VIOLATION (TXT "{EX} DelAtom;BrekRegForm;", TGT I[BrekRegForm]
+          ,TXT "{EX} DelPair;sessionIsBrekReg;SESSION;", SRC I, TXT ";SESSION;", TGT I
+          ,TXT "{EX} InsPair;sessionSwitchContextReq;SESSION;", SRC I, TXT ";SESSION;", SRC I -- switch to default context
+          )
+ROLE ExecEngine MAINTAINS "Discard orphaned BrekRegForms"
+RULE "Discard orphaned BrekRegForms":
+  I |- sessionBrekRegForm~;sCtxtIsBrekBeheer;sessionBrekRegForm \/ brekRegForm~;brekRegForm
+VIOLATION (TXT "{EX} DelAtom;BrekRegForm;", SRC I[BrekRegForm])
+
+--[BrekRegForm Structure]
+brfNP            :: BrekRegForm * NatuurlijkPersoon [UNI] -- aanvrager
+brfBank          :: BrekRegForm * Bank        [UNI] -- Bank die het tegoed van de rekening beheert.
+brfType          :: BrekRegForm * BrekType    [UNI] -- Soort rekening, bijv. betaalrekening, zakelijke rekening, spaarrekening.
+brfHouder        :: BrekRegForm * Party       [UNI] -- de Party op wiens naam de rekening zal komen te staan.
+brfHouderRef     :: BrekRegForm * PartyRef    [UNI] -- Tenaamstelling, i.e. naam van de Party op wiens naam de rekening zal komen te staan.
+brfKredLimiet    :: BrekRegForm * Bedrag      [UNI] -- het bedrag dat de rekening 'rood' mag staan.
+
+brfBeheerAccount :: BrekRegForm * Account     [UNI] -- Account van de actor die de rekening beheert en er dus alles mee mag.
+brfNaam          :: BrekRegForm * Tekst       [UNI] -- Naam waaronder de rekeningBeheerder deze rekening kent.
+
+brfPhoneNr       :: BrekRegForm * PhoneNr     [UNI] -- PhoneNr waarop de Beheerder bereikbaar is
+brfEmailAddr     :: BrekRegForm * EmailAddr   [UNI] -- emailadres waarop de Beheerder bereikbaar is
+brfHomeAddr      :: BrekRegForm * DutchAddr[UNI] -- Nederlands (fysiek) adres waar post betreffende rekening heengestuurd kan worden
+
+--[INTERFACEs]
+POPULATION isInvisible CONTAINS [ ("BrekAanvragen", "BrekAanvragen") ]
+INTERFACE "BrekAanvragen" FOR User: "_SESSION" /\ sessionBrekRegForm;sessionBrekRegForm~ cRud BOX <RAW form>
+--**Later moet per brekType een formulier ingevuld kunnen worden. Implementeer a-la sCtxt-spul**
+        [ "Formulier invullen": sessionBrekRegForm cRud BOX <FORM>
+            [ "Soort rekening": I cRud BOX <OBJECTDROPDOWN>
+                [ selectfrom: V;I[BrekType] cRud
+                , setrelation: brfType cRUd
+                , instruction: TXT "Selecteer het type bankrekening"
+                ]
+            , "T.n.v.": brfHouderRef cRud
+            , "Kredietlimiet": brfKredLimiet cRUd
+            , " ": TXT "<hr/>"
+            , "Beheerder": brfBeheerAccount cRud <AccountOneLineSummary>
+            , "Rekening naam": brfNaam cRUd
+            , "Telefoon": brfPhoneNr cRUd
+            , "Email": brfEmailAddr cRUd
+
+            ]
+        , "Knoppenbalk ": I cRud BOX <TABLE noHeader>
+            [ "Aanvragen": sessionBrekRegForm cRud BOX <PROPBUTTON>
+                [ label: TXT "Aanvragen" -- Hiermee vraag je de applicatie om een 'Promise' (of 'Deny')
+                , property : brfProcessReq cRUd
+                , disabled : (I-brfIsClean) cRud
+                ]
+            , "Annuleren": sessionBrekRegForm cRud BOX <PROPBUTTON>
+                [ label: TXT "Annuleren"
+                , property : brfCancelReq cRUd
+                ]
+            ]
+        ]
+
+--[Rules that apply when filling in a form]
+--$ Stuff that MUST be the case
+-- n.v.t.
+RULE "Een rekening mag alleen worden aangevraagd als het geld erop wordt beheerd door onze bank/applicatie":
+    I |- V[BrekRegForm*I_Am];isOwnedBy;I[Bank];brfBank~
+RULE "Een rekening mag alleen worden aangevraagd als de beheerder een account heeft van/voor de Houder":
+    brfBeheerAccount~;brfHouderRef |- accPartyRef
+
+ROLE ExecEngine MAINTAINS "InsPair brfBank"
+RULE "InsPair brfBank": sessionBrekRegForm~;"_SESSION";V[SESSION*I_Am];isOwnedBy;I[Party] |- brfBank;I[Bank]
+VIOLATION (TXT "{EX} InsPair;brfBank;BrekRegForm;", SRC I, TXT ";Bank;", TGT I[Party])
+
+ROLE ExecEngine MAINTAINS "InsPair brfHouder" -- Je mag alleen aanvragen met een Account van de beoogde Houder
+RULE "InsPair brfHouder": sessionBrekRegForm~;sessionParty |- brfHouder
+VIOLATION (TXT "{EX} InsPair;brfHouder;BrekRegForm;", SRC I, TXT ";Party;", TGT I)
+
+ROLE ExecEngine MAINTAINS "InsPair brfHouderRef" -- Je mag alleen aanvragen met een Account van de beoogde Houder
+RULE "InsPair brfHouderRef": sessionBrekRegForm~;sessionPartyRef |- brfHouderRef
+VIOLATION (TXT "{EX} InsPair;brfHouderRef;BrekRegForm;", SRC I, TXT ";PartyRef;", TGT I)
+
+ROLE ExecEngine MAINTAINS "InsPair brfBeheerAccount" -- De aanvrager is de initiele beheerder
+RULE "InsPair brfBeheerAccount": sessionBrekRegForm~;sessionAccount |- brfBeheerAccount
+VIOLATION (TXT "{EX} InsPair;brfBeheerAccount;BrekRegForm;", SRC I, TXT ";Account;", TGT I)
+
+--$ Default populations
+ROLE ExecEngine MAINTAINS "InsPair brfType"
+RULE "InsPair brfType": I-brfType;brfType~ |- brfType;"betaalrekening";brfType~
+VIOLATION (TXT "{EX} InsPair;brfType;BrekRegForm;", SRC I, TXT ";BrekType;betaalrekening")
+
+ROLE ExecEngine MAINTAINS "InsPair brfPhoneNr"
+RULE "InsPair brfPhoneNr": (I-brfPhoneNr;brfPhoneNr~);brfHouder;personPhoneNr |- brfPhoneNr
+VIOLATION (TXT "{EX} InsPair;brfPhoneNr;BrekRegForm;", SRC I, TXT ";PhoneNr;", TGT I)
+
+ROLE ExecEngine MAINTAINS "InsPair brfEmailAddr"
+RULE "InsPair brfEmailAddr": (I-brfEmailAddr;brfEmailAddr~);brfHouder;personEmailAddr |- brfEmailAddr
+VIOLATION (TXT "{EX} InsPair;brfEmailAddr;BrekRegForm;", SRC I, TXT ";EmailAddr;", TGT I)
+
+ROLE ExecEngine MAINTAINS "InsPair brfHomeAddr"
+RULE "InsPair brfHomeAddr": (I-brfHomeAddr;brfHomeAddr~);brfHouder;personHomeAddr[Person*DutchAddr] |- brfHomeAddr
+VIOLATION (TXT "{EX} InsPair;brfHomeAddr;BrekRegForm;", SRC I, TXT ";DutchAddr;", TGT I)
+
+--$ Make sure that filled in values (that the user may have modified by hand) are (still) correct
+-- n.v.t.
+
+--[Establish whether or not the form is clean - i.e. the transaction is 'promisable']
+brfIsClean :: BrekRegForm * BrekRegForm [PROP]
+ROLE ExecEngine MAINTAINS "InsPair brfIsClean"
+RULE "InsPair brfIsClean": I /\ brfHouderRef;brfHouderRef~ /\ brfType;brfType~ /\ brfBeheerAccount;brfBeheerAccount~ |- brfIsClean
+VIOLATION (TXT "{EX} InsPair;brfIsClean;BrekRegForm;", SRC I, TXT ";BrekRegForm;", TGT I)
+ROLE ExecEngine MAINTAINS "DelPair brfIsClean"
+RULE "DelPair brfIsClean": brfIsClean |- I /\ brfHouderRef;brfHouderRef~ /\ brfType;brfType~ /\ brfBeheerAccount;brfBeheerAccount~
+VIOLATION (TXT "{EX} DelPair;brfIsClean;BrekRegForm;", SRC I, TXT ";BrekRegForm;", TGT I)
+
+--[Create Registration-entry from clean form]
+brfProcessReq :: BrekRegForm * BrekRegForm [PROP] -- Process the BrekRegForm (does not include generating other stuff)
+RULE "A request for processing BrekRegForms can only be done on clean forms": brfProcessReq |- brfIsClean
+
+ROLE ExecEngine MAINTAINS "Deny brfProcessReq"
+RULE "Deny brfProcessReq": brfProcessReq |- brfIsClean /\ sessionBrekRegForm~;sessionBrekRegForm
+VIOLATION (TXT "{EX} DelPair;brfProcessReq;BrekRegForm;", SRC I, TXT ";BrekRegForm;", TGT I)
+
+brekRegForm    :: Bankrekening * BrekRegForm [INJ,UNI]
+ROLE ExecEngine MAINTAINS "Service brfProcessReq"
+RULE "Service brfProcessReq":
+   sessionBrekRegForm;(brfProcessReq /\ brfIsClean) |- sessionBrekRegForm;(I /\ brekRegForm~;brekRegForm)
+VIOLATION (TXT "{EX} InsAtom;Bankrekening"
+          ,TXT "{EX} InsPair;brekRegForm;Bankrekening;_NEW;BrekRegForm;", TGT I
+          ,TXT "{EX} InsPair;brekBank;Bankrekening;_NEW;Bank;", TGT brfBank
+          ,TXT "{EX} InsPair;brekType;Bankrekening;_NEW;BrekType;", TGT brfType
+          ,TXT "{EX} InsPair;brekHouder;Bankrekening;_NEW;Party;", TGT brfHouder
+          ,TXT "{EX} InsPair;brekHouderRef;Bankrekening;_NEW;PartyRef;", TGT brfHouderRef
+          ,TXT "{EX} InsPair;brekNaam;Bankrekening;_NEW;Tekst;", TGT brfNaam
+          ,TXT "{EX} InsPair;brekKredLimiet;Bankrekening;_NEW;Bedrag;", TGT brfKredLimiet
+          ,TXT "{EX} InsPair;brekBeheerAccount;Bankrekening;_NEW;Account;", TGT brfBeheerAccount
+          ,TXT "{EX} InsPair;brekNaam;Bankrekening;_NEW;Tekst;", TGT brfNaam
+          ,TXT "{EX} TriggerService;BrekInitializer" -- Genereer unieke IBAN
+          ,TXT "{EX} InsPair;personPhoneNr;Person;", TGT brfNP ,TXT ";PhoneNr;", TGT brfPhoneNr
+          ,TXT "{EX} InsPair;personEmailAddr;Person;", TGT brfNP ,TXT ";EmailAddr;", TGT brfEmailAddr
+          ,TXT "{EX} InsPair;personHomeAddr;Person;", TGT brfNP ,TXT ";DutchAddr;", TGT brfHomeAddr
+          ,TXT "{EX} DelPair;brfProcessReq;BrekRegForm;", TGT I, TXT ";BrekRegForm;", TGT I
+          )
+
+--[Registration is completed]
+ROLE ExecEngine MAINTAINS "Registration of BrekRegForm is completed" -- note that 'brekIsClean' implies that NP has an Account
+RULE "Registration of BrekRegForm is completed":
+  sessionBrekRegForm;(I /\ brekRegForm~;brekIsClean;brekRegForm) |- -V
+VIOLATION (TXT "{EX} DelPair;sessionBrekRegForm;SESSION;", SRC I, TXT ";BrekRegForm;", TGT I
+          ,TXT "{EX} DelPair;sessionIsBrekReg;SESSION;", SRC I, TXT ";SESSION;", SRC I
+          )
+
+ENDCONTEXT

@@ -1,0 +1,44 @@
+CONTEXT Bank IN DUTCH
+
+--[Generic stuff]
+  INCLUDE "../Generic/Generic_Loader.adl" -- Generic VIEWs, SIAM stuff, NatuurlijkPersoon extensions, etc.
+
+--[Initial Populations]
+  INCLUDE "./Bank_BankEnRekeningenRegister.xlsx" -- Default contents of bank accounts of various people and different banks
+
+--[Banks]
+--$ Zittende data (licentiehouders, rekeningen etc.)
+  INCLUDE "./Bank_Developer.ifc"
+  INCLUDE "./Bank_Licentiehouders.adl"
+  INCLUDE "./Bank_Betaalopdrachten.xlsx" -- Een aantal betaalopdrachten zodat de rekeningen niet meteen 'leeg' zijn.
+
+  INCLUDE "./Bank_Views.adl"
+
+--$ SSI interfacing
+  INCLUDE "./Bank_Attestaties.adl"
+
+--$ Applicatie - Portaal en functionaliteiten
+  INCLUDE "./Bank_Portaal.adl"
+
+  INCLUDE "./Bank_BrekRekeningen.adl" -- algemene bankrekeningen; alle rekeningen vallen hieronder.
+  INCLUDE "./Bank_BrekRechten.adl" -- Wie mag inzien? Wie overmaken? Wie mandateren?
+  INCLUDE "./Bank_Adresboek.adl"
+
+  INCLUDE "./Bank_BrekBeheer.ifc" -- inclusief knoppen voor het aanvragen (later ook: opheffen) van een bankrekening
+  INCLUDE "./Bank_BrekRegForms.adl" -- Invullen van formulieren voor het aanvragen van een Bankrekening
+
+  INCLUDE "./Bank_BrekTransacties.adl" -- Bijschrijven en afschrijven van bedragen op bankrekeningen
+  INCLUDE "./Bank_BrekTransacties.ifc" -- Interfaces voor af- en bijschrijvingen
+
+  INCLUDE "./Bank_Betaalopdrachten.adl" -- Levenscyclus van Betaalopdrachten, die leiden tot bij- en afschrijvingen
+  INCLUDE "./Bank_Betaalopdrachten.ifc"
+
+  INCLUDE "./Bank_Mandaten.adl"
+  INCLUDE "./Bank_Mandaten.ifc"
+
+  -- INCLUDE "./Bank_VAS.adl"
+  -- INCLUDE "./Bank_VAS.ifc"
+  -- INCLUDE "./Bank_VAS_VerklaringVanExecutele.ifc"
+  -- INCLUDE "./Bank_VAS_Erfrecht.ifc"
+
+ENDCONTEXT

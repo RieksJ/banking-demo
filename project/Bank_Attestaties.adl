@@ -1,0 +1,105 @@
+CONTEXT "Bank_Attestaties" IN DUTCH
+
+--[Persoonsgegevens attestatie]
+
+INTERFACE "AttestatieUitgifte": I[NatuurlijkPersoon] cRud BOX <TABLE>
+   [ "Persoonsgegevens": I cRud BOX <RAW form>
+      [ "Attestatie": I cRud <NatuurlijkPersoonCredUitgeven>
+      , "Betreft": I cRud
+      ]
+   -- , "Persoonlijke rekening(en)": brekHouder~;(I[Bankrekening]-I[ZakelijkeRekening]) cRud BOX <RAW form>
+   --    [ "Attestatie": I[Bankrekening] cRud <BankrekeningCredUitgeven>
+   --    , "Betreft": brekIBAN cRud
+   --    -- , "saldo": brekSaldo cRud
+   --    ]
+   -- , "Zakelijke rekening(en)": brekHouder~;I[ZakelijkeRekening] cRud BOX <RAW form>
+   --    [ "Attestatie": I cRud <ZakelijkeRekeningCredUitgeven>
+   --    , "Betreft": brekIBAN cRud
+   --    -- , "saldo": brekSaldo cRud
+   --    , "voor onderneming": zrekHandelsnaam cRud
+   --    ]
+   ]
+
+--[Bankrekening attestatie]
+brekVfdID :: Bankrekening * VfdID [INJ,UNI]  -- The (distributed) ID that the Bankrekening can be identified with
+ROLE ExecEngine MAINTAINS "Generate brekVfdID if it does not exist"
+RULE "Generate brekVfdID if it does not exist": I |- brekVfdID;brekVfdID~
+VIOLATION (TXT "{EX} InsPair;brekVfdID;Bankrekening;", SRC I, TXT ";VfdID;{php}'attidfr:bankrekening:'.bin2hex(random_bytes(10))")
+ROLE ExecEngine MAINTAINS "brekVfdIDs must be unique, and only available when needed"
+RULE "brekVfdIDs must be unique, and only available when needed": brekVfdID;brekVfdID~ |- I
+VIOLATION (TXT "{EX} DelPair;brekVfdID;Bankrekening;", SRC I, TXT ";VfdID;", TGT I) -- Deleting it is ok; it is automatically regenerated
+
+--[Aanmaken van AttSummary]
+brekAttSummaryText :: Bankrekening * SummaryText [UNI]    REPRESENT SummaryText TYPE BIGALPHANUMERIC
+
+IDENT AttSummary: AttSummary(asIBAN,asHouderRef)
+asBrek :: AttSummary * Bankrekening [INJ,UNI,TOT]
+asIBAN :: AttSummary * IBAN [UNI]
+asHouderRef  :: AttSummary * PartyRef [UNI]
+
+ROLE ExecEngine MAINTAINS "InsAtom AttSummary"
+RULE "InsAtom AttSummary": brekIsClean |- asBrek~;asBrek
+VIOLATION (TXT "{EX} InsAtom;AttSummary"
+          ,TXT "{EX} InsPair;asBrek;AttSummary;_NEW;Bankrekening;", SRC I
+          ,TXT "{EX} InsPair;asIBAN;AttSummary;_NEW;IBAN;", TGT brekIBAN
+          ,TXT "{EX} InsPair;asHouderRef;AttSummary;_NEW;PartyRef;", TGT brekHouder;partyRef
+)
+ROLE ExecEngine MAINTAINS "DelAtom AttSummary that doesn't have a (clean) asBrek"
+RULE "DelAtom AttSummary that doesn't have a (clean) asBrek": I[AttSummary] |- asBrek;brekIsClean;asBrek~
+VIOLATION (TXT "{EX} DelAtom;AttSummary;", SRC I)
+
+ROLE ExecEngine MAINTAINS "InsPair asIsClean"
+RULE "InsPair asIsClean":
+   asBrek /\ asIBAN;brekIBAN~ /\ asHouderRef;partyRef~;brekHouder~
+|- asBrek;(I /\ brekAttSummaryText;brekAttSummaryText~)
+VIOLATION (TXT "{EX}_;InsPair_;brekAttSummaryText_;Bankrekening_;", TGT I, TXT "_;SummaryText_;"
+               ,TXT "Bankrekening-attestatie over `", SRC asIBAN
+               ,TXT "` van ", SRC asHouderRef
+          )
+ROLE ExecEngine MAINTAINS "DelAtom AttSummary that has a asBrek"
+RULE "DelAtom AttSummary that has a asBrek":
+   asBrek;(I /\ brekAttSummaryText;brekAttSummaryText~)
+|- asIBAN;brekIBAN~ /\ asHouderRef;partyRef~;brekHouder~
+VIOLATION (TXT "{EX} DelAtom;AttSummary;", SRC I)
+
+--[Issuing API for BankrekeningAttestatie]
+VIEW BankrekeningAttestatie : Bankrekening
+   { "ifcId"            : TXT "BankrekeningAttestatie"      -- API through which credential data is read/issued
+   , "token"            : brekVfdID                         -- Token that provides access to the interface
+   , "formAtom"        : I                                 -- Atom where data will be read to/issued from
+   , "credentialType"   : TXT "BankrekeningAttestatie"      -- name of data object in the namespace of this application
+   } HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+POPULATION APIText CONTAINS [ "bankrekening" ]
+API "BankrekeningAttestatie": brekVfdID~ cRud BOX
+   [ "id" : brekVfdID cRud
+   , "type": V;"bankrekening"[APIText] cRud
+   , "issuer": V;myIssuerURL cRud
+   , "summary" : brekAttSummaryText cRud
+   , "rekeningnummer": brekIBAN cRud
+   , "persoonsgegevens": brekHouder;I[NatuurlijkPersoon] API "NatuurlijkPersoonData"
+   ]
+
+--[Zakelijke rekening attestatie]
+-- VIEW ZakelijkeRekeningAttestatie : ZakelijkeRekening
+--    { "ifcId"            : TXT "ZakelijkeRekeningAttestatie"    -- API through which credential data is read/issued
+--    , "token"            : brekVfdID                            -- Token that provides access to the interface
+--    , "formAtom"        : I                                    -- Atom where data will be read to/issued from
+--    , "credentialType"   : TXT "ZakelijkeRekeningAttestatie"    -- name of data object in the namespace of this application
+--    } HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+-- POPULATION APIText CONTAINS [ "zakelijkerekening" ]
+-- API "ZakelijkeRekeningAttestatie": brekVfdID~;I[ZakelijkeRekening] cRud BOX
+--    [ "id" : brekVfdID cRud
+--    , "type": V;"zakelijkerekening"[APIText] cRud
+--    , "issuer": V[ZakelijkeRekening*I_Am];myIssuerURL cRud
+--    , "summary" : brekAttSummaryText cRud
+--    , "rekeningnummer": brekIBAN cRud
+--    , "persoonsgegevens": brekHouder;I[NatuurlijkPersoon]  API "NatuurlijkPersoonData"
+--    , "handelsnaam": zrekHandelsnaam cRud
+--    , "rechtsvorm": zrekRechtsvorm cRud
+--    , "kvknummer": zrekKvKNummer cRud
+--    , "btwnummer": zrekBTWNummer cRud
+--    ]
+
+ENDCONTEXT
