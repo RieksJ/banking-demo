@@ -1,0 +1,3 @@
+CONTEXT "Banking Demo" IN ENGLISH
+INCLUDE "example.adl"
+ENDCONTEXT
