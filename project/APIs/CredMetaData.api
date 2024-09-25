@@ -1,0 +1,34 @@
+CONTEXT "CredMetaData API"
+
+credmdRequestId :: CredMetaData * RequestId [UNI]
+credmdType      :: CredMetaData * Type [UNI]
+credmdStatus    :: CredMetaData * Status [UNI]
+credmdConnector :: CredMetaData * Connector [UNI]
+credmdIat       :: CredMetaData * Iat [UNI] -- Issued AT (time of issuing)
+credmdAud       :: CredMetaData * Aud [UNI] -- Audience
+credmdIss       :: CredMetaData * Iss [UNI] -- Issuer
+credmdSub       :: CredMetaData * Sub [UNI] -- Subject
+credmdIsSuccess :: CredMetaData * CredMetaData [PROP]
+credmdIsCanceled:: CredMetaData * CredMetaData [PROP]
+
+--[Define an API for inputing the form/fields]
+VIEW CredMetaData: CredMetaData
+{ "formAtom"       : I                  -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "CredMetaData" -- API through which credential data is read/issued
+, "credentialType" : TXT "CredMetaData" -- name of data object in the namespace of this application
+} ENDVIEW
+
+API "CredMetaData": I[CredMetaData] CRud BOX
+   [ "requestId": credmdRequestId CRUd
+   , "type": credmdType CRUd
+   , "id": credmdStatus CRUd
+   , "connector": credmdConnector CRUd
+   , "iat": credmdIat CRUd
+   , "aud": credmdAud CRUd
+   , "iss": credmdIss CRUd
+   , "sub": credmdSub CRUd
+   , "successFlag": credmdIsSuccess CRUd
+   , "canceledFlag": credmdIsCanceled CRUd
+   ]
+
+ENDCONTEXT

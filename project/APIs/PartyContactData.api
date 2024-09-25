@@ -1,0 +1,145 @@
+CONTEXT "PartyContactData API"
+{- Het komt voor dat een Party met wie je van doen hebt een NatuurlijkPersoon is.
+   Maar dat kan ook een Organisatie (althans een niet-NatuurlijkPersoon) zijn,
+   die zich middels een NatuurlijkPersoon (althans een Actor) laat vertegenwoordigen.
+   Een 'PartyContactData' is een datastructuur die dit hanteerbaar maakt,
+   door een de verschillende mogelijkheden te mappen naar een (Party,Actor) combinatie.
+   En als die combinatie een Account heeft zien we dat ook...
+-}
+
+INCLUDE "./CredMetaData.api"
+INCLUDE "./Organization.api" --# [ "IncludeOndernemingAPI" ]
+INCLUDE "./Person.api" --# [ "IncludeNatuurlijkPersoonAPI" ]
+INCLUDE "./DutchAddr.api"
+
+--[PartyContactDatas]
+CONCEPT PartyContactData "the combination of a Party and various of its contact details"
+pctctNP        :: PartyContactData * NatuurlijkPersoon [UNI] -- Persoonsgegevens van de Party c.q. van de NP die voor/namens de Party benaderd kan worden.
+-- Wellicht kunnen we nog generieker worden als we `pctctOrg` vervangen door `pctctParty`
+pctctOrg       :: PartyContactData * Organization [UNI] -- Gegevens van de Organization die als Party optreedt.
+pctctMailAddr  :: PartyContactData * DutchAddr    [UNI] -- DutchAddr (ISA PhysicalAddr!) waar post voor de Party naartoe gestuurd kan worden.
+pctctPhoneNr   :: PartyContactData * PhoneNr            -- PhoneNr(s) voor het voeren van gesprekken met de Party.
+pctctEmailAddr :: PartyContactData * EmailAddr          -- Email adres waarnaar berichten voor de Party kunnen worden gestuurd.
+
+REPRESENT VfdID, AttType, URL, SummaryText TYPE BIGALPHANUMERIC
+REPRESENT PhoneNr, EmailAddr TYPE ALPHANUMERIC
+
+pctctActor :: PartyContactData * Actor -- Het contact verloopt via (een van) deze Actor(en)
+ROLE ExecEngine MAINTAINS "InsPair pctctActor"
+RULE "InsPair pctctActor": pctctNP |- pctctActor
+VIOLATION (TXT "{EX} InsPair;pctctActor;PartyContactData;", SRC I, TXT ";Actor;", TGT I[Actor])
+
+pctctParty :: PartyContactData * Party [UNI] -- Het contact is gelegd met deze Party
+ROLE ExecEngine MAINTAINS "InsPair pctctParty"
+RULE "InsPair pctctParty": pctctOrg \/ (I-pctctOrg;pctctOrg~);pctctNP |- pctctParty
+VIOLATION (TXT "{EX} InsPair;pctctParty;PartyContactData;", SRC I, TXT ";Party;", TGT I[Party])
+
+pctctAccount :: PartyContactData * Account [UNI] -- Het Account van de PartyContactData
+ROLE ExecEngine MAINTAINS "InsPair pctctAccount"
+RULE "InsPair pctctAccount": pctctParty;accParty~ /\ pctctActor;accActor~ |- pctctAccount
+VIOLATION (TXT "{EX} InsPair;pctctAccount;PartyContactData;", SRC I, TXT ";Account;", TGT I)
+
+--[Define an API for inputing the form/fields]
+pctctCredMD :: PartyContactData * CredMetaData [INJ,UNI]
+
+--#IFNOT AutoCreateCredMetaDataAtom
+credMDIsPartyContactData :: CredMetaData * CredMetaData [PROP]
+ROLE ExecEngine MAINTAINS "InsAtom and InsPair pctctCredMD"
+RULE "InsAtom and InsPair pctctCredMD": I[PartyContactData] |- pctctCredMD;pctctCredMD~
+VIOLATION (TXT "{EX} InsAtom;CredMetaData"
+          ,TXT "{EX} InsPair;credMDIsPartyContactData;CredMetaData;_NEW;CredMetaData;_NEW"
+          ,TXT "{EX} InsPair;pctctCredMD;PartyContactData;", SRC I, TXT ";CredMetaData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom and DelPair credMDIsPartyContactData"
+RULE "DelAtom and DelPair credMDIsPartyContactData": credMDIsPartyContactData |- pctctCredMD~;pctctCredMD
+VIOLATION (TXT "{EX} DelAtom;CredMetaData;", SRC I)
+--#ENDIF
+
+VIEW PartyContactCredInlezen: PartyContactData
+{ "formAtom"       : I                      -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "PartyContactData" -- API through which credential data is read/issued
+, "credentialType" : TXT "PartyContact"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"     -- API through which credential MetaData is read
+, "credmdAtom"     : pctctCredMD            -- Atom where MetaData is read
+, "buttonText"     : TXT "Partij/Contactgegevens inlezen"
+} HTML TEMPLATE "View-CredentialVerifyRequest.html" ENDVIEW
+
+VIEW PartyContactCredUitgeven : PartyContactData
+{ "formAtom"       : I                      -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "PartyContactData" -- API through which credential data is read/issued
+, "credentialType" : TXT "PartyContact"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"     -- API through which credential MetaData is read
+, "credmdAtom"     : pctctCredMD            -- Atom where MetaData is read
+, "buttonText"     : TXT "Partij/Contactgegevens credential"
+} HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+API "PartyContactData": I[PartyContactData] CRud BOX
+    [ "persoonsgegevens": pctctNP API "NatuurlijkPersoonData" -- API "PersonData"
+    , "ondernemingsgegevens": pctctOrg API "OrganizationData"
+--  , "actorgegevens": pctctOrg API "ActorData"
+--  , "organisatiegegevens": pctctOrg API "OrgansisatieData"
+    , "postadres": pctctMailAddr API "DutchAddrData"
+    , "telefoonnummer": pctctPhoneNr cRUd
+    , "emailadres": pctctEmailAddr cRUd
+    ]
+
+--[VIEWs en INTERFACEs voor het inzien van PartyContactData]
+
+--$ Interfaces voor Developers
+INTERFACE "[PartyContactData_Dev]": I[PartyContactData] cRuD BOX <FORM hideSubOnNoRecords>
+   [ "persoonsgegevens": pctctNP <NP_Debugview>
+   , "ondernemingsgegevens": pctctOrg;I[Onderneming] INTERFACE "[Onderneming_Dev]"
+   , "postadres": pctctMailAddr cRud
+   , "telefoonnummer": pctctPhoneNr cRUd
+   , "emailadres": pctctEmailAddr cRUd
+   ]
+
+--$ Interfaces voor uitgebreid inzien
+INTERFACE "ViewPartyContact": I[PartyContactData] BOX <RAW table>
+   [ "Onderneming": I /\ pctctOrg;pctctOrg~ cRud BOX <RAW table>
+      [ "Org": pctctOrg;orgRef cRud
+      , "Ctct": TXT " (Contactpersoon: "
+      , "NP": pctctNP;I[NatuurlijkPersoon];personRef cRud
+      , "Tel:)": TXT ", Tel.:"
+      , "PhoneNr": pctctPhoneNr cRud
+      , "Mail:)": TXT ", Mail:"
+      , "EmailAddr": pctctEmailAddr cRud
+      , "TXT:)": TXT ")"
+      ]
+   , "NatuurlijkPersoon": I - pctctOrg;pctctOrg~ cRud BOX <RAW table>
+      [ "NP": pctctNP;I[NatuurlijkPersoon];personRef cRud
+      , "Telefoon": TXT ", Tel.:"
+      , "PhoneNr": pctctPhoneNr cRud
+      , "Email": TXT ", Mail:"
+      , "EmailAddr": pctctEmailAddr cRud
+      ]
+   ]
+
+--$ Interfaces voor samenvattingen
+INTERFACE "ToonPartyContactNPContactDataSummary": I[PartyContactData] cRud BOX <RAW table>
+   [ "Partij": pctctNP INTERFACE "ToonVoornamenGeslachtsnaamGebDatumGebPlaats"
+   , "wonende te": TXT " wonende te "
+   , "Adres": pctctMailAddr cRud <AddrLabel>
+   , "(telefoon: ": TXT ", tel.: "
+   , "Telefoon":  pctctPhoneNr \/ (I-pctctPhoneNr;pctctPhoneNr~);V;"---"[PhoneNr] cRud
+   , "email:": TXT ", email: "
+   , "Email": pctctEmailAddr \/ (I-pctctEmailAddr;pctctEmailAddr~);V;"---"[EmailAddr] cRud
+   , ")": TXT ")"
+   ]
+POPULATION "PhoneNr" CONTAINS [ "---" ]
+POPULATION "EmailAddr" CONTAINS [ "---" ]
+
+VIEW EersteVoornaamGeslachtsnaam: PartyContactData
+{ "EersteVoornaam": pctctNP;npEersteVoornaam
+, " ": TXT " "
+, "Geslatchtsnaam": pctctNP;npGeslachtsnaam
+} ENDVIEW
+
+VIEW PartyContactRef: PartyContactData
+{ "Actor": pctctActor;actorRef
+, "(": TXT " ("
+, "Party": pctctParty;partyRef
+, ")": TXT ")"
+} ENDVIEW
+
+ENDCONTEXT

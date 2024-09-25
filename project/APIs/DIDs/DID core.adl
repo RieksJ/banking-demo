@@ -1,0 +1,12 @@
+CONTEXT "DID Core"
+
+CONCEPT DID "globally unique identifier"
+didSubject    :: DID * Entity [UNI] -- The entity that the DID refers to, that is identified by the DID.
+didDocument   :: DID * DIDdoc [UNI] -- this is the trace of assignments of DIDdocs to the DID
+didController :: DID * Entity       -- The entity (person, organization, autonomous software) that has the capability to change the DID document.
+
+
+
+
+
+ENDCONTEXT

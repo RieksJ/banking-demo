@@ -1,0 +1,39 @@
+CONTEXT "Generic_Attestations"
+PURPOSE CONTEXT "Generic_Attestations" {+ The purpose of this file is to specify generic Issuer functionality,
+which consists of specifying:
+- the kinds of credentials that the Issuer is capable of issuing
+  (which is needed for populating the Issuer's credential shop);
+- the way in which credentials are actually issued;
+- the way in which credentials are revoked.
++}
+
+CONCEPT AttVar "variable, the contents of which is the payload of an credential that has been issued to a specific party"
+CONCEPT AttVal "contents of an AttVar"
+
+IDENT AttVars: AttVar(conceptAttIssuer,conceptAttType,conceptVfdID)
+conceptVfdID        :: AttVar * VfdID         [INJ,UNI,TOT]
+conceptAttType        :: AttVar * AttType         [UNI] -- Note that in VCs, there can be multiple types
+conceptAttIssuer      :: AttVar * URL             [UNI]
+conceptAttSummaryText :: AttVar * SummaryText     [UNI]
+conceptAttIssuedAt    :: AttVar * DateTime        [UNI,TOT]
+conceptAttSubject     :: AttVar * Concept         [TOT] -- At least theoretically, an Attestation may attest about different subjects (i.e. the root-nodes of a linked-data object).
+-- Insert other linked data attributes here
+conceptAttProof       :: AttVar * Proof           [UNI] -- e.g. a signature
+
+REPRESENT VfdID, AttType, URL, SummaryText TYPE BIGALPHANUMERIC
+REPRESENT DateTime TYPE DATETIME
+
+ROLE ExecEngine MAINTAINS "InsPair conceptAttIssuer"
+RULE "InsPair conceptAttIssuer": I |- conceptAttIssuer;conceptAttIssuer~
+VIOLATION (TXT "{EX} InsPair;conceptAttIssuer;Concept;", SRC I, TXT ";URL;", TGT V;myIssuerURL)
+
+conceptAttIssuedAt :: AttVar * DateTime [UNI]
+ROLE ExecEngine MAINTAINS "InsPair conceptAttIssuedAt"
+RULE "InsPair conceptAttIssuedAt": I |- conceptAttIssuedAt;conceptAttIssuedAt~
+VIOLATION (TXT "{EX} InsPair;conceptAttIssuedAt;Concept;", SRC I, TXT ";DateTime;{php}date(DATE_ISO8601)")
+
+--[Issuing Attestations]
+
+INCLUDE "./Generic_IssuerHistory.adl" -- Ensure that whenever the contents of an credential is changed, the current one is revoked.
+
+ENDCONTEXT

@@ -1,0 +1,37 @@
+CONTEXT "Dutch Addresses Developer Interfaces"
+
+INCLUDE "../APIs/DutchAddr.api"
+
+--#IFNOT NoMainDevIfc
+-- This is *the* entry point for developers. It should only be compiled for the main application itself.
+-- To allow other applications to provide their own developer's entry point, this section is not compiled by default.
+
+INCLUDE "../SIAMv4/SIAM_Developer.ifc" --# [ "NoMainDevIfc" ]     -- Includes interfaces [SESSION_Dev] and [SIAM_Dev]
+
+INTERFACE "[Dev]": "_SESSION";V[SESSION*ONE] cRud BOX <TABS>
+[ "SIAMv4":  I INTERFACE "[SIAM_Dev]"
+, "Addrs":   I INTERFACE "[Addrs_Dev]"
+]
+--#ENDIF
+
+INCLUDE "../PhysicalAddr/PhysicalAddr_Developer.ifc" --# [ "NoMainDevIfc" ] -- Includes interface [PhysicalAddr_Dev]
+
+INTERFACE "[Addrs_Dev]": I[ONE] cRud BOX <TABS>
+   [ "Dutch Addrs":    I INTERFACE "[DutchAddr_Dev]"
+   , "Physical Addrs": I INTERFACE "[PhysicalAddr_Dev]"
+   ]
+
+INTERFACE "[DutchAddr_Dev]": V[ONE*DutchAddr] cRud BOX <TABLE sortable>
+    [ "Kadaster-ID" : daddrID cRud
+    , "Straat" : daddrStreet cRud
+    , "Huisnummer" : daddrStreetNr cRud
+    , "Toevoeging" : daddrStrNrAddition cRud
+    , "Huisletter" : daddrStrNrLetter cRud
+    , "Postcode" : daddrZIPCode cRud
+    , "Plaats" : daddrCity cRud
+    , "Gemeente" : daddrMunicipality cRud
+    , "Provincie" : daddrProvince cRud
+    , "Label" : addrLabel cRud
+    ]
+
+ENDCONTEXT

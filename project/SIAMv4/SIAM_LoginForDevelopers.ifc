@@ -1,0 +1,77 @@
+CONTEXT "LoginForDevelopers" IN ENGLISH
+{-This script is intended to be reusable, and for INCLUDEsion in your own scripts.
+This interface provides you with LOGIN functionality.
+It is particularly suited for developers, since it allows you to select an account
+by which you then will be logged in, rather than that you have to type the actual
+username and password.
+-}
+-----------------------------------------------------------
+
+INCLUDE "./SIAM_AccountRegUsingForm.adl"
+
+INTERFACE "Login" FOR Anonymous: sessionIsAnon cRud BOX <RAW>
+--$This section allows users to login or register themselves
+   [ "Login bar": I-sessionAccRegForm;sessionAccRegForm~ cRud BOX <TABLE hideOnNoRecords>
+      [ "Userid": loginUserid cRUd
+      , "Password": loginPassword cRUd -- crUd is needed for Passwords
+--    , "IdP": loginIdP cRUd
+--    , "Auth.level": sessionAuthLoA cRUd
+      , " ": I cRud BOX <TABLE hideOnNoRecords noHeader>
+         [ "login": I-sessionLoginAssist cRud BOX <PROPBUTTON>
+            [ "label": TXT "Login"
+            , "property": sessionLoginReq cRUd
+            , "disabled": I - (loginUserid;loginUserid~ /\ loginPassword;loginPassword~) cRud
+            ]
+         , "error": sessionLoginAssist;(I-(V;accIsActive;V))cRud BOX <RAW>
+            [ "msg": TXT "Cannot help - there are no (active) accounts"
+            ]
+         , "show accounts": I-sessionLoginAssist cRud BOX <PROPBUTTON>
+            [ "label": TXT "Show Accounts"
+            , "property": sessionLoginAssist cRUd
+            ]
+         , "hide accounts": sessionLoginAssist cRud BOX <PROPBUTTON>
+            [ "label": TXT "Hide Accounts"
+            , "property": sessionLoginAssist cRUd
+            ]
+--#IFNOT NoRegistrationWithLogin
+         , "register": I-sessionLoginAssist cRud BOX <PROPBUTTON>
+            [ "label": TXT "Register"
+            , "property": sessionCreateAccRegFormReq cRUd
+            , "disabled": I /\ sessionAccRegForm;sessionAccRegForm~ cRud
+            , "popovertext": TXT "Create a new account"
+            ]
+--#ENDIF
+         ]
+      ]
+--#IFNOT NoRegistrationWithLogin
+--$This section allows users of anonymous sessions to register an account
+   , "Registration": sessionAccRegForm INTERFACE "Register"
+--#ENDIF
+
+--$This section allows (enabled) developers to login by selecting an exsting account
+   , "Active accounts": sessionLoginAssist;V;accIsActive cRuD BOX <TABLE hideOnNoRecords sortable>
+      [ "Userid": accUserid cRud
+      , "ActorRef": I cRud <AccountOfParty>
+--    , "UIDs": accUID cRud
+      , "Roles": accAllowedRoles cRud
+--    , "Allowed roles": accAllowedRoles cRud
+--    , "Default roles": accDefaultRoles cRud
+      , "  " : I cRud BOX <RAW> [ "Login":       I cRud BOX <PROPBUTTON> [ "property": accAutoLoginReq cRUd ] ]
+      , " " :  I cRud BOX <RAW> [ "De-activate": I cRud BOX <PROPBUTTON> [ "property": accIsActive cRUd ] ]
+      ]
+
+--$This section allows (enabled) developers to activate de-activated accounts (so that they can be used for logging in)
+   , "Inactive accounts": sessionLoginAssist;V;(I-accIsActive) cRuD BOX <TABLE hideOnNoRecords sortable>
+      [ "Activate?" : I cRud BOX <PROPBUTTON> [ "property": accIsActive cRUd ]
+      , "Userid": accUserid cRud
+      , "ActorRef": I cRud <AccountOfParty>
+--    , "UIDs": accUID cRud
+      , "Allowed roles": accAllowedRoles cRUd
+      , "Default roles": accDefaultRoles cRUd
+      , " " :  I cRud BOX <RAW> [ "Activate": I cRud BOX <PROPBUTTON> [ "property": accIsActive cRUd ] ]
+      ]
+
+   ]
+
+-----------------------------------------------------------
+ENDCONTEXT

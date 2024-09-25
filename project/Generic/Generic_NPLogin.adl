@@ -1,0 +1,123 @@
+CONTEXT "Generic_NPLogin" IN DUTCH
+{- Deze extensie verzorgt een generiek login mechanisme dat niet alleen gebruik maakt van SIAM,
+maar ook kan inloggen met credentials, zoals die voor een NatuurlijkPersoon.
+Deze extensie kan ook (geconsolideerde) NPs aan laten maken en maakt dan zelf bijbehorende accounts aan.
+-}
+
+INCLUDE "./APIs/NatuurlijkPersoon.api"
+
+ROLE ExecEngine MAINTAINS "InsPair npFormIsClean for Login purposes"
+RULE "InsPair npFormIsClean for Login purposes": sessionLoginNP;npFormIsMinimallyClean |- sessionLoginNP;npFormIsClean
+VIOLATION (TXT "{EX} InsPair;npFormIsClean;NPForm;", TGT I[NPForm], TXT ";NPForm;", TGT I[NPForm])
+
+--[Hulp-relaties om de evaluatie-tijden voor regels mee te verkleinen]
+accNPReg :: Account * NPReg -- define relation accNPReg as shorthand for accIsActive;(accParty;I[AorP]/\accActor;I[AorP])
+ROLE ExecEngine MAINTAINS "Eqv-InsPair accNPReg"
+RULE "Eqv-InsPair accNPReg": (accParty;I[NPReg] /\accActor;I[NPReg]) |- accNPReg
+VIOLATION (TXT "{EX} InsPair;accNPReg;Account;", SRC I, TXT ";NPReg;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair accNPReg"
+RULE "Eqv-DelPair accNPReg": accNPReg |- (accParty;I[NPReg]/\accActor;I[NPReg])
+VIOLATION (TXT "{EX} DelPair;accNPReg;Account;", SRC I, TXT ";NPReg;", TGT I)
+
+--[Persoonlijk Account opzoeken en ermee inloggen]
+{- Het idee is om een NatuurlijkPersoon aan te maken.
+   In eerste instantie is dit (vanzelf ook) een NPForm en die kan dus worden ingevuld of ingelezen.
+   Zodra die schoon is en een NPReg identificeert wordt die (vanzelf) door deze NPReg vervangen - zie NatuurlijkPersoon.api.
+   Als de NPReg een Account heeft kunnen we daarmee inloggen. Zo niet, dan niet.
+-}
+sessionLoginNP :: SESSION * NatuurlijkPersoon [UNI] -- object dat in de sessie wordt ingevuld en verder verwerkt
+
+ROLE ExecEngine MAINTAINS "In een User sessie is inloggen niet nodig"
+RULE "In een User sessie is inloggen niet nodig": sessionIsUser;sessionLoginNP;I[NPForm] |- -V
+VIOLATION (TXT "{EX} DelAtom;NPForm;", TGT I[NPForm]
+)
+ROLE ExecEngine MAINTAINS "In een Anonymous sessie moeten we kunnen inloggen als NatuurlijkPersoon"
+RULE "In een Anonymous sessie moeten we kunnen inloggen als NatuurlijkPersoon": sessionIsAnon |- sessionLoginNP;sessionLoginNP~
+VIOLATION (TXT "{EX} InsAtom;NPForm"
+          ,TXT "{EX} InsPair;sessionLoginNP;SESSION;", SRC I, TXT ";NatuurlijkPersoon;_NEW"
+          ,TXT "{EX} InsPair;npFormSelectReq;NPForm;_NEW;NPForm;_NEW" -- Login as soon as the form is clean
+)
+-- Zodra een NP is geregistreerd/geselecteerd, dan is de NP geen NPForm meer maar een NPReg - Zie file "NatuurlijkPersoon.api"
+ROLE ExecEngine MAINTAINS "Deny login when selected NPReg does not have an Account"
+RULE "Deny login when selected NPReg does not have an Account": sessionLoginNP;I[NPReg] |- V;accNPReg
+VIOLATION (TXT "{EX} DelPair;sessionLoginNP;SESSION;", SRC I, TXT ";NatuurlijkPersoon;", SRC sessionLoginNP
+          ,TXT "{EX} InsPair;sessionMsgOnScreen;SESSION;", SRC I, TXT ";IfcText;Login failed - no valid/active account found"
+)
+ROLE ExecEngine MAINTAINS "Deny login when selected NPReg has an initialized account that is not active"
+RULE "Deny login when selected NPReg has an initialized account that is not active":
+   sessionLoginNP;I[NPReg];accNPReg~;accIsInitialized |- V;accIsActive
+VIOLATION (TXT "{EX} DelPair;sessionLoginNP;SESSION;", SRC I, TXT ";NatuurlijkPersoon;", SRC sessionLoginNP
+          ,TXT "{EX} InsPair;sessionMsgOnScreen;SESSION;", SRC I, TXT ";IfcText;Login failed - no valid/active account found"
+)
+ROLE ExecEngine MAINTAINS "Service login when selected NPReg has an Account"
+RULE "Service login when selected NPReg has an Account": sessionLoginNP;accNPReg~;accIsActive |- V;accAutoLoginReq
+VIOLATION (TXT "{EX} DelPair;sessionLoginNP;SESSION;", SRC I, TXT ";NatuurlijkPersoon;", SRC sessionLoginNP
+          ,TXT "{EX} InsPair;accAutoLoginReq;Account;", TGT I, TXT ";Account;", TGT accIsActive
+)
+--[Registratie]
+{- Als er een NP wordt ingelezen waarvoor al wel een NPReg bestaat, maar die nog geen Account heeft,
+   dan kan zo'n account automatisch worden aangemaakt. Daar merkt de gebruiker dan verder niets van.
+   Als er een NP wordt ingelezen waarvoor nog geen NPReg bestaat, dan moet die eerst worden aangemaakt.
+   Daartoe moet de gebruiker op een OK/Registreer-knop drukken.
+   Daarna wordt het account meteen aangemaakt (zoals hiervoor beschreven).
+   De applicatie configureert zijn voorkeur door `myAutoAccRegPref[I_Am]` te (de)populeren
+-}
+myAutoAccRegPref :: I_Am * I_Am [PROP] -- Dit systeem staat het registreren van gebruikersaccounts toe
+-- POPULATION myAutoAccRegPref CONTAINS [ ("I_Am","I_Am") ] -- Allow registration of Accounts by users (presenting a credential)
+
+ROLE ExecEngine MAINTAINS "Auto register new users"
+RULE "Auto register new users": sessionIsAnon;V;myAutoAccRegPref |- sessionIsAutoRegister;V
+VIOLATION (TXT "{EX} InsPair;sessionIsAutoRegister;SESSION;", SRC I, TXT ";SESSION;", SRC I)
+
+sessionIsAutoRegister :: SESSION * SESSION [PROP] -- When a NP-credential is succesfully read but has no account, one may be created
+
+ROLE ExecEngine MAINTAINS "Reset clean NPForm when not auto registering"
+RULE "Reset clean NPForm when not auto registering":
+   (sessionIsAnon-sessionIsAutoRegister);sessionLoginNP;(npFormIsClean /\ npFormIdentifiesNoNPs) |- -V
+VIOLATION (TXT "{EX} DelAtom;NPForm;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Auto create Accounts when sessionIsAutoRegister"
+RULE "Auto create Accounts when sessionIsAutoRegister":
+   sessionIsAutoRegister;sessionLoginNP;I[NPReg] |- sessionLoginNP;accNPReg~;V
+VIOLATION (TXT "{EX} InsAtom;Account"
+          ,TXT "{EX} InsPair;accActor;Account;_NEW;Actor;", TGT I[NPReg]
+          ,TXT "{EX} InsPair;accParty;Account;_NEW;Party;", TGT I[NPReg]
+          ,TXT "{EX} InsPair;accNPReg;Account;_NEW;NPReg;", TGT I[NPReg]
+)
+--[Generic Login Interface]
+
+POPULATION IfcText CONTAINS [ "Er zijn (nog) geen (actieve) accounts"]
+POPULATION isInvisible CONTAINS [ ("Generic__NPLogin", "Generic__NPLogin") ]
+
+INTERFACE "Generic_NPLogin" FOR Anonymous: sessionIsAnon cRud BOX <RAW form>
+   [ "No active accounts error": (V-(V;accIsActive;V));"Er zijn (nog) geen (actieve) accounts"[IfcText] <STRONG>
+   , "Active accounts exist": I /\ V;accIsActive;V cRud BOX <RAW form>
+      [ "buttonbar": I cRud BOX <TABLE noHeader>
+         [ "Inloggen met Credential":  sessionLoginNP;(I - npCredMD;credmdIsSuccess;npCredMD~) cRud <NatuurlijkPersoonCredInlezen>
+         , "Registreren": sessionIsAutoRegister;sessionLoginNP;I[NPForm] cRud BOX <PROPBUTTON>
+            [ label: TXT "Registreren"
+            , popovertext: TXT "Door te klikken maakt u een account aan"
+            , property: npFormRegReq cRUd -- Door deze te klikken wordt NPForm->NPReg
+            , disabled: I - (npFormIsClean /\ npFormIdentifiesNoNPs) cRud
+            , disabledpopovertext: TXT "De ingelezen credential bevat te weinig/verkeerde gegevens"
+            , hide: I - npFormIsClean
+            ]
+         , "Active accounts": sessionLoginAssist;V;accIsActive cRud BOX <TABLE noHeader>
+            [ "Login" : I cRud BOX <PROPBUTTON> [ "property": accAutoLoginReq cRUd ]
+--          , "Userid": accUserid cRud
+            , "Person": I cRud <AccountOfParty>
+            ]
+         , "Inloggen (Ontwikkelaar)": I-sessionLoginAssist cRud BOX <PROPBUTTON>
+            [ property: sessionLoginAssist cRUd
+            , popovertext: TXT "Voor ontwikkelaars: toon een lijst van gebruikers waarmee u in kunt loggen om te testen"
+            , color: TXT "info" -- primary=blue secondary=grey, success=green, warning=yellow, danger=red, info=lightblue, light=grey, dark=black
+            ]
+         , "Verberg accounts": sessionLoginAssist cRud BOX <PROPBUTTON>
+            [ property: sessionLoginAssist cRUd
+            , color: TXT "info" -- primary=blue secondary=grey, success=green, warning=yellow, danger=red, info=lightblue, light=grey, dark=black
+            ]
+         ]
+      ]
+   ]
+
+ENDCONTEXT

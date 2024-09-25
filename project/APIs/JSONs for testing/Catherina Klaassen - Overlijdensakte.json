@@ -1,0 +1,49 @@
+{
+    "meta": "placeholder",
+    "payload": {
+        "id": "attid:Overlijdensakte:314156deadbeefcafe",
+        "type": [ "Overlijdensakte" ],
+        "issuer": [ "https://brp-walletproxy.ssi-lab.sensorlab.tno.nl" ],
+        "summary": "Overlijdensakte betreffende Catharina Klaassen, geboren op 1962-02-02 te Rotterdam",
+        "overlijden": {
+            "overledene": {
+                "geslachtsnaam": "Klaassen",
+                "eerstevoornaam": "Catharina",
+                "voornamen": "Catharina Amalia Cornelia",
+                "titel": null,
+                "geboortedatum": "1962-02-02",
+                "geboorteplaats": "Rotterdam",
+                "geboorteland": "Nederland",
+                "geslacht": "V"
+            },
+            "laatsteWoonadres": {
+                "straatnaam": "Tuinbouwlaan",
+                "huisnummer": "18",
+                "huisletter": null,
+                "huisnummertoevoeging": null,
+                "toevoeging": null,
+                "postcode": "3510AB",
+                "plaats": "Utrecht",
+                "gemeente": "Utrecht",
+                "provincie": null
+            },
+            "overlijdensdatum": "2021-02-02",
+            "overlijdensplaats": "Amsterdam",
+            "overlijdensgemeente": "Amsterdam"
+        },
+        "lijkschouw": {
+            "doodsoorzaak": "beroerte",
+            "natuurlijkeDood": "true",
+            "plaats": "Amsterdam",
+            "datum": "2021-02-02"
+        },
+        "slottext": {
+            "plaats": "Amsterdam",
+            "datum": "2021-02-03",
+            "tijdstip": "03:03:03",
+            "party": "Gemeente Amsterdam",
+            "actor": "Mw. A.S. Dam",
+            "proof": ""
+        }
+    }
+}

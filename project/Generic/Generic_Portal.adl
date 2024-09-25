@@ -1,0 +1,39 @@
+CONTEXT "GenericPortal" IN DUTCH
+{- Dit moet een generiek portaal worden om snel nieuwe webservice applicaties mee te bouwen.
+   Dat is het nu nog niet.
+   Er zijn verschillende uitvoeringsvormen voor een dergelijk portaal denkbaar, zoals
+   - een portaal voor een webservice die door Internet gebruikers wordt gebruikt.
+     In dat geval zal een (eind)gebruiker moeten kunnen inloggen, en die wordt de session-user.
+     Ook zou zo'n (eind)gebruiker zich moeten kunnen registreren.
+   - een portaal voor een applicatie aan een balie.
+     In dat geval zal een baliemedewerk(st)er moeten kunnen inloggen, en die wordt de session-user.
+     Er is dan ook een faciliteit nodig voor het identificeren en authenticeren van een of meer balieklant(en).
+     Die hoeven (uiteraar) geen account te hebben, maar het zou wel kunnen.
+     Ook zit hier een mogelijkheid dat de baliemedewerk(st)er voor zo iemand een account maakt.
+   Het zou mooi zijn als de verschillende mogelijkheden conditioneel meegeladen kunnen worden.
+-}
+
+--[AnonHome]
+INCLUDE "./Generic/Generic_NPLogin.adl" -- Definieert `INTERFACE "Generic_NPLogin"` en bijbehorende procesregels
+
+POPULATION ifcTitle CONTAINS [ ("AnonHome", "Inloggen") ]
+POPULATION isInvisible CONTAINS [ ("AnonHome", "AnonHome") ]
+INTERFACE "AnonHome" FOR Anonymous: "_SESSION";sessionIsAnon cRud BOX <RAW form>
+   [ "Header/Title": V;"AnonHome"[InterfaceMetaData] cRud
+   , "horizontale lijn": TXT "<hr/>"
+   , "Inloggen": I INTERFACE "Generic_NPLogin"
+-- , "Registreren": I-sessionLoginAssist cRud BOX <PROPBUTTON> [ property : sessionIsBrekReg cRUd ]
+   ]
+
+--[UserHome]
+
+POPULATION ifcTitle CONTAINS [ ("UserHome", "Inloggen") ]
+POPULATION isInvisible CONTAINS [ ("UserHome", "UserHome") ]
+INTERFACE "UserHome": sessionIsUser cRud BOX <RAW form> -- Deze interface wordt alleen aangeroepen als er is ingelogd.
+   [ "Header/Title": V;"UserHome"[InterfaceMetaData] cRud
+   , "Uitgifte persoonsgegevens attestatie": sessionActor cRud BOX <FORM> -- het gaat hier om de persoon die is ingelogd (niet om een mogelijk geidentificeerde balieklant).
+      [ "Persoonsgegevens attestatie": I[NatuurlijkPersoon] cRud <NatuurlijkPersoonCredUitgeven>
+      ]
+   ]
+
+ENDCONTEXT

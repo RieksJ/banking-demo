@@ -1,0 +1,13 @@
+CONTEXT "Generic_Loader" IN DUTCH
+-- This file INCLUDEs/loads the files that all demo applications share
+
+  INCLUDE "./Generic_Views.adl"           -- Has default views for `Amount`, `Bedrag`, and `InterfaceMetaData`
+  INCLUDE "./Generic_SIAMv4_Module.adl"   -- Default SIAM configuration for all SSI demos
+  INCLUDE "./Generic_NPLogin.adl"         -- Login function that includes functionality for logging in with credentials
+
+  INCLUDE "./Generic_NPRegister.xlsx"     -- Default registry of NatuurlijkPersoon instances
+--INCLUDE "./Generic_NPAccounts.xlsx"     -- Default set of accounts for a selection of registered NatuurlijkPersoon instances
+
+  INCLUDE "./APIs/APIs_CredentialReissuing.ifc"
+
+ENDCONTEXT

@@ -1,0 +1,88 @@
+CONTEXT SchemaOrgAddrs
+
+INCLUDE "./PhysicalAddr.adl"
+
+CONCEPT SchemaOrgAddr "a PhysicalAddr that has relations as defined in schema.org"
+CLASSIFY SchemaOrgAddr ISA PhysicalAddr
+
+-- The following relations map onto the Properties for `PostalAddress`, which is a specialization of `Address`@schema.org
+soaddrStreetAddr  :: SchemaOrgAddr * AddrLine    [UNI]                                          -- `streetAddress`, e.g. 1600 Ampitheatry Pkwy.
+soaddrPOBoxNr     :: SchemaOrgAddr * POBoxNr     [UNI]    REPRESENT POBoxNr   TYPE ALPHANUMERIC -- `postOfficeBoxNumber` for PO box addresses.
+soaddrStrAddition :: SchemaOrgAddr * AddrLine    [UNI]                                          -- e.g.:  3rd floor, room 314
+soaddrPostalCode  :: SchemaOrgAddr * ZIPCode     [UNI]    REPRESENT ZIPCode   TYPE ALPHANUMERIC -- `postalCode`, e.g. 94043.
+soaddrLocality    :: SchemaOrgAddr * Locality    [UNI]    REPRESENT Locality  TYPE ALPHANUMERIC -- `addressLocality`, e.g. Mountain View.
+soaddrRegion      :: SchemaOrgAddr * AddrLine    [UNI]    REPRESENT Region    TYPE ALPHANUMERIC -- `addressRegion`, e.g. CA (California).
+soaddrCountry     :: SchemaOrgAddr * AddrLine    [UNI]    REPRESENT Country   TYPE ALPHANUMERIC -- `addressCountry`, e.g. USA.
+
+--[ISO 3661-1 Country Codes]
+CLASSIFY Country ISA AddrLine
+
+INCLUDE "./ISO 3166-1 codes.xlsx"
+lc_XX       :: Landcode * XX       [UNI,TOT]  REPRESENT XX      TYPE ALPHANUMERIC -- 'alpha-2': two-character country code (e.g. 'NL')
+lc_XXX      :: Landcode * XXX      [UNI,TOT]  REPRESENT XXX     TYPE ALPHANUMERIC -- 'alpha-3': three-character country code (e.g. 'NLD')
+lc_NNN      :: Landcode * NNN      [UNI,TOT]  REPRESENT NNN     TYPE ALPHANUMERIC -- 'numeric-3': three-digit country code (e.g. '528')
+lc_Country  :: Landcode * Country  [UNI,TOT]  REPRESENT Country TYPE ALPHANUMERIC --
+
+soaddrXX :: SchemaOrgAddr * XX [UNI]    REPRESENT CountryCode TYPE ALPHANUMERIC -- 2-letter ISO 3166-1 alpha-2 country code
+ROLE ExecEngine MAINTAINS "Auto fill in soaddrCountry"
+RULE "Auto fill in soaddrCountry": soaddrXX;lc_XX~;lc_Country |- soaddrCountry
+VIOLATION (TXT "{EX} InsPair;soaddrCountry;SchemaOrgAddr;", SRC I[SchemaOrgAddr], TXT ";AddrLine;", TGT I[AddrLine])
+
+--[addrLine1 = Street + number; we don't do 'Postbus' (yet?)]
+ROLE ExecEngine MAINTAINS "Auto create addrLine1 for SchemaOrgAddrs"
+RULE "Auto create addrLine1 for SchemaOrgAddrs": soaddrStreetAddr |- addrLine1
+VIOLATION (TXT "{EX} InsPair;addrLine1;PhysicalAddr;", SRC I[PhysicalAddr], TXT ";AddrLine;", TGT I)
+ROLE ExecEngine MAINTAINS "Auto delete addrLine1 for SchemaOrgAddrs"
+RULE "Auto delete addrLine1 for SchemaOrgAddrs": I[SchemaOrgAddr];addrLine1 |- soaddrStreetAddr
+VIOLATION (TXT "{EX} DelPair;addrLine1;PhysicalAddr;", SRC I[PhysicalAddr], TXT ";AddrLine;", TGT I)
+
+--[addrLine2 = addition, such as 3rd floor, room 14)]
+ROLE ExecEngine MAINTAINS "Auto create addrLine2 for SchemaOrgAddrs"
+RULE "Auto create addrLine2 for SchemaOrgAddrs": soaddrStrAddition |- addrLine2
+VIOLATION (TXT "{EX} InsPair;addrLine2;PhysicalAddr;", SRC I[PhysicalAddr], TXT ";AddrLine;", TGT I)
+ROLE ExecEngine MAINTAINS "Auto delete addrLine2 for SchemaOrgAddrs"
+RULE "Auto delete addrLine2 for SchemaOrgAddrs": I[SchemaOrgAddr];addrLine2 |- soaddrStrAddition
+VIOLATION (TXT "{EX} DelPair;addrLine2;PhysicalAddr;", SRC I[PhysicalAddr], TXT ";AddrLine;", TGT I)
+
+--[addrLine3 = postal code + locality]
+soac3SchemaOrgAddr :: SOAC3 * SchemaOrgAddr [UNI,TOT]
+soac3ZIPCode       :: SOAC3 * ZIPCode       [UNI] -- 9737KX
+soac3Locality      :: SOAC3 * Locality      [UNI] -- Roden (=plaats)
+
+ROLE ExecEngine MAINTAINS "Auto create SOAC3"
+RULE "Auto create SOAC3": I[SchemaOrgAddr] /\ (soaddrLocality;soaddrLocality~ \/ soaddrPostalCode;soaddrPostalCode~) |- soac3SchemaOrgAddr~;soac3SchemaOrgAddr
+VIOLATION (TXT "{EX} InsAtom;SOAC3"
+          ,TXT "{EX} InsPair;soac3SchemaOrgAddr;SOAC3;_NEW;DutchAddr;", SRC I
+          )
+ROLE ExecEngine MAINTAINS "Auto delete SOAC3"
+RULE "Auto delete SOAC3": soac3SchemaOrgAddr |- soac3SchemaOrgAddr;(I[SchemaOrgAddr] /\ (soaddrLocality;soaddrLocality~ \/ soaddrPostalCode;soaddrPostalCode~))
+VIOLATION (TXT "{EX} DelAtom;SOAC3;", SRC I
+          ,TXT "{EX} DelPair;addrLine3;PhysicalAddr;", TGT I, TXT ";AddrLine;", TGT addrLine3
+          )
+ROLE ExecEngine MAINTAINS "Auto create addrLine3 for SchemaOrgAddrs"
+RULE "Auto create addrLine3 for SchemaOrgAddrs":
+   soac3SchemaOrgAddr |-  V;addrLine3~
+                         /\ soac3ZIPCode <> soaddrPostalCode~
+                         /\ soac3Locality <> soaddrLocality~
+VIOLATION (TXT "{EX} InsPair;soac3ZIPCode;SOAC3;", SRC I, TXT ";ZIPCode;", TGT soaddrPostalCode
+          ,TXT "{EX} InsPair;soac3Locality;SOAC3;", SRC I, TXT ";City;", TGT soaddrLocality
+          ,TXT "{EX} InsPair;addrLine3;PhysicalAddr;", TGT I[PhysicalAddr], TXT ";AddrLine;",TGT soaddrPostalCode, TXT "  ", TGT soaddrLocality
+          )
+
+--[addrLine4 = region]
+ROLE ExecEngine MAINTAINS "Auto create addrLine4 for SchemaOrgAddrs"
+RULE "Auto create addrLine4 for SchemaOrgAddrs": soaddrRegion |- addrLine4
+VIOLATION (TXT "{EX} InsPair;addrLine4;PhysicalAddr;", SRC I[PhysicalAddr], TXT ";AddrLine;", TGT I)
+ROLE ExecEngine MAINTAINS "Auto delete addrLine4 for SchemaOrgAddrs"
+RULE "Auto delete addrLine4 for SchemaOrgAddrs": I[SchemaOrgAddr];addrLine4 |- soaddrRegion
+VIOLATION (TXT "{EX} DelPair;addrLine4;PhysicalAddr;", SRC I[PhysicalAddr], TXT ";AddrLine;", TGT I)
+
+--[addrLine5 = country]
+ROLE ExecEngine MAINTAINS "Auto create addrLine5 for SchemaOrgAddrs"
+RULE "Auto create addrLine5 for SchemaOrgAddrs": soaddrCountry |- addrLine5
+VIOLATION (TXT "{EX} InsPair;addrLine5;PhysicalAddr;", SRC I[PhysicalAddr], TXT ";AddrLine;", TGT I)
+ROLE ExecEngine MAINTAINS "Auto delete addrLine5 for SchemaOrgAddrs"
+RULE "Auto delete addrLine5 for SchemaOrgAddrs": I[SchemaOrgAddr];addrLine5 |- soaddrCountry
+VIOLATION (TXT "{EX} DelPair;addrLine5;PhysicalAddr;", SRC I[PhysicalAddr], TXT ";AddrLine;", TGT I)
+
+ENDCONTEXT

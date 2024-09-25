@@ -43,6 +43,13 @@ RULE "Discard orphaned BrekRegForms":
   I |- sessionBrekRegForm~;sCtxtIsBrekBeheer;sessionBrekRegForm \/ brekRegForm~;brekRegForm
 VIOLATION (TXT "{EX} DelAtom;BrekRegForm;", SRC I[BrekRegForm])
 
+--[Additional, commonly used attributes]
+personPhoneNr    :: Person * PhoneNr          -- Personal phone number (i.e. of the Party+Actor)
+personEmailAddr  :: Person * EmailAddr        -- Personal email address(es) (i.e. of the Party+Actor)
+personHomeAddr   :: Person * DutchAddr  [UNI] -- Address where the person lives (i.e. of the Party+Actor)
+
+REPRESENT PhoneNr, EmailAddr TYPE ALPHANUMERIC
+
 --[BrekRegForm Structure]
 brfNP            :: BrekRegForm * NatuurlijkPersoon [UNI] -- aanvrager
 brfBank          :: BrekRegForm * Bank        [UNI] -- Bank die het tegoed van de rekening beheert.
@@ -56,7 +63,7 @@ brfNaam          :: BrekRegForm * Tekst       [UNI] -- Naam waaronder de rekenin
 
 brfPhoneNr       :: BrekRegForm * PhoneNr     [UNI] -- PhoneNr waarop de Beheerder bereikbaar is
 brfEmailAddr     :: BrekRegForm * EmailAddr   [UNI] -- emailadres waarop de Beheerder bereikbaar is
-brfHomeAddr      :: BrekRegForm * DutchAddr[UNI] -- Nederlands (fysiek) adres waar post betreffende rekening heengestuurd kan worden
+brfHomeAddr      :: BrekRegForm * DutchAddr   [UNI] -- Nederlands (fysiek) adres waar post betreffende rekening heengestuurd kan worden
 
 --[INTERFACEs]
 POPULATION isInvisible CONTAINS [ ("BrekAanvragen", "BrekAanvragen") ]

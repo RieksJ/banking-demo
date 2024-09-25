@@ -1,0 +1,22 @@
+CONTEXT DutchAddrAutofillIfc
+
+INCLUDE "./DutchAddrAutofill.adl"
+
+INTERFACE "DutchAddr": I[DutchAddr] cRud BOX <RAW form>
+   [ "Input": I cRud BOX <TABLE>
+      [ "Postcode" : daddrZIPCode
+      , "Huisnummer" : daddrStreetNr
+      ]
+   , "Result": I cRud BOX
+      [ "Straat" : daddrStreet cRud
+      , "Huisnummer" : daddrStreetNr cRud
+      , "Toevoeging" : daddrStrNrAddition cRud
+      , "Huisletter" : daddrStrNrLetter cRud
+      , "Plaats" : daddrCity cRud
+      , "Gemeente" : daddrMunicipality cRud
+      , "Provincie" : daddrProvince cRud
+      , "Kadaster-ID" : daddrID cRud
+      ]
+   ]
+
+ENDCONTEXT

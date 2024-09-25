@@ -1,0 +1,8 @@
+CONTEXT "Generic" IN DUTCH
+
+INCLUDE "./Generic_Loader.adl"
+INCLUDE "./Generic_Developer.ifc"
+
+INCLUDE "./Generic_Portal.adl"
+
+ENDCONTEXT

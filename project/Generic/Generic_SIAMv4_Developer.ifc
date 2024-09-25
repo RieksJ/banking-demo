@@ -1,0 +1,53 @@
+CONTEXT "DeveloperIfc" IN ENGLISH
+
+INTERFACE "[SIAMv4 Developer]" FOR Anonymous, User: "_SESSION" cRud BOX <TABS>
+   [ "This Session" : I cRud BOX <FORM>
+      [ "Sessionid" : I cRud
+      , "Userid" : sessionUserid cRud
+      , "UID" : sessionUID cRud
+      , "Account" : sessionAccount cRud
+      , "AllowedRoles" : sessionAllowedRoles cRud
+      , "ActiveRoles" : sessionActiveRoles cRud
+      , "Person" : sessionActor cRud
+      -- , "Org" : sessionOrg cRud
+      , "Anonymous session?" : sessionIsAnon cRud
+      , "User session?" : sessionIsUser cRud
+      , "Agent session?" : sessionIsAgent cRud
+      ]
+   , "Accounts": V[SESSION*Account] cRud BOX <TABLE sortable hideOnNoRecords>
+      [ "Account" : accUserid;accUserid~ cRud
+      , "Userid": accUserid cRud
+      , "Person": accActor cRud
+      -- , "Org": accOrg cRud
+      , "AllowedRoles": accAllowedRoles cRud
+      , "DefaultRoles": accDefaultRoles cRud
+      -- , "IsGodAccount" : accIsGodAccount cRUd
+      , "IsInitialized" : accIsInitialized cRUd
+      , "IsActive" : accIsActive cRUd
+      , "DeactivateReq" : accDeactivateReq cRUd
+      ]
+   , "Roles": V[SESSION*Role] cRud BOX <TABS>
+      [ "Regular Roles": I-systemRole cRud BOX <TABLE sortable hideOnNoRecords>
+         [ "Role" : I cRud
+         , "Assigned to": accAllowedRoles~ cRud
+         , "Default for": accDefaultRoles~ cRud
+         ]
+      , "Systemroles": systemRole cRud
+      ]
+   , "Persons": V[SESSION*Person] cRud BOX <TABLE sortable hideOnNoRecords>
+      [ "I": I cRud
+      , "personRef" : personRef cRud
+      , "First name": personFirstName cRud
+      , "Last name" : personLastName cRud
+      -- , "Organization" : personOrg cRud
+      , "Account" : accActor~ cRud
+      -- , "DID" : personDID cRud
+      ]
+   , "Organizations": V[SESSION*Organization] cRud BOX <TABLE sortable hideOnNoRecords>
+      [ "Short name" : orgRef cRud
+      , "Full name"  : orgFullName cRud
+      -- , "Persons"    : personOrg~ cRud
+      ]
+   ]
+
+ENDCONTEXT

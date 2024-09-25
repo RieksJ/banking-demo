@@ -1,0 +1,91 @@
+CONTEXT "Onderneming API"
+
+INCLUDE "./CredMetaData.api"
+
+CLASSIFY Onderneming ISA Organization
+CLASSIFY Handelsnaam ISA OrgFullName
+
+IDENT Ondernemingen: Onderneming(kvko_KvKNummer)
+kvko_KvKNummer        :: Onderneming * KvKNummer    [INJ,UNI]
+kvko_BTWNummer        :: Onderneming * BTWNummer    [INJ,UNI]
+kvko_Eigenaar         :: Onderneming * Party            [UNI]
+kvko_EigenaarAdres    :: Onderneming * DutchAddr        [UNI] -- PrivÃ© adres van de eigenaar
+kvko_StartDatum       :: Onderneming * Datum            [UNI]
+kvko_BezoekAdres      :: Onderneming * DutchAddr        [UNI] -- Als dit adres afwijkt van het privÃ© adres, is een bewijsstuk nodig waaruit blijkt dat het opgegeven adres voor het bedrijf gebruikt kan worden, bijvoorbeeld een huurovereenkomst.
+kvko_PostAdres        :: Onderneming * DutchAddr        [UNI]
+kvko_SBICode          :: Onderneming * SBICode                -- Standaard BedrijfsIndeling (sector waarin je bezig bent)
+kvko_Activiteiten     :: Onderneming * SBIText                -- Activiteiten (i.e. de SBI-tekst)
+kvko_Handelsnaam      :: Onderneming * Handelsnaam            -- dat mogen er meerdere zijn; Da's wel jammer, omdat [UNI] beter zou uitkomen in de user-interface en in de Summary van attestaties
+kvko_Rechtsvorm       :: Onderneming * Rechtsvorm       [UNI]
+kvko_Telefoonnummers  :: Onderneming * PhoneNr
+kvko_Faxnummers       :: Onderneming * PhoneNr
+kvko_Domeinnamen      :: Onderneming * Domeinnaam
+kvko_Emailadressen    :: Onderneming * EmailAddr
+kvko_FullTimers       :: Onderneming * Aantal           [UNI] -- personen die 15 uur of meer per week in de onderneming werken
+kvko_PartTimers       :: Onderneming * Aantal           [UNI] -- personen die minder dan 15 uur per week in de onderneming werken
+kvko_Medewerkers      :: Onderneming * Aantal           [UNI] -- het aantal medewerkers dat voor de onderneming werkzaam is (inclusief de eigenaar).
+
+REPRESENT KvKNummer, BTWNummer, SBICode, Handelsnaam, Rechtsvorm TYPE ALPHANUMERIC
+REPRESENT PhoneNr, EmailAddr, Domeinnaam TYPE ALPHANUMERIC
+REPRESENT Datum TYPE DATE
+REPRESENT Aantal TYPE INTEGER
+
+--[Define an API for inputing the form/fields]
+kvko_CredMD :: Onderneming * CredMetaData [INJ,UNI]
+
+--#IFNOT AutoCreateCredMetaDataAtom
+credMDIsOnderneming :: CredMetaData * CredMetaData [PROP]
+ROLE ExecEngine MAINTAINS "InsAtom and InsPair kvko_CredMD"
+RULE "InsAtom and InsPair kvko_CredMD": I[Onderneming] |- kvko_CredMD;kvko_CredMD~
+VIOLATION (TXT "{EX} InsAtom;CredMetaData"
+          ,TXT "{EX} InsPair;credMDIsOnderneming;CredMetaData;_NEW;CredMetaData;_NEW"
+          ,TXT "{EX} InsPair;kvko_CredMD;Onderneming;", SRC I, TXT ";CredMetaData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom and DelPair credMDIsOnderneming"
+RULE "DelAtom and DelPair credMDIsOnderneming": credMDIsOnderneming |- kvko_CredMD~;kvko_CredMD
+VIOLATION (TXT "{EX} DelAtom;CredMetaData;", SRC I)
+--#ENDIF
+
+VIEW OndernemingCredInlezen: Onderneming
+{ "formAtom"       : I                     -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "OndernemingData" -- API through which credential data is read/issued
+, "credentialType" : TXT "Onderneming"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"    -- API through which credential MetaData is read
+, "credmdAtom"     : kvko_CredMD           -- Atom where MetaData is read
+, "buttonText"     : TXT "Ondernemingsgegevens inlezen"
+} HTML TEMPLATE "View-CredentialVerifyRequest.html" ENDVIEW
+
+VIEW OndernemingCredUitgeven : Onderneming
+{ "formAtom"       : I                     -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "OndernemingData" -- API through which credential data is read/issued
+, "credentialType" : TXT "Onderneming"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"    -- API through which credential MetaData is read
+, "credmdAtom"     : kvko_CredMD           -- Atom where MetaData is read
+, "buttonText"     : TXT "Ondernemingsgegevens credential"
+} HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+API "OndernemingData": I[Onderneming] CRud BOX
+    [ "kvknummer": kvko_KvKNummer cRUd
+    , "btwnummer": kvko_BTWNummer cRUd
+    , "bezoekadres": kvko_BezoekAdres API "DutchAddrData"
+    , "postadres": kvko_PostAdres API "DutchAddrData"
+    , "sbicode": kvko_SBICode cRUd
+    , "handelsnaam": kvko_Handelsnaam cRUd
+    , "rechtsvorm": kvko_Rechtsvorm cRUd
+    , "telefoonnummers": kvko_Telefoonnummers cRUd
+    , "faxnummers": kvko_Faxnummers cRUd
+    , "domeinnamen": kvko_Domeinnamen cRUd
+    , "emailadressen": kvko_Emailadressen cRUd
+    ]
+
+--[Debugging interfaces]
+INTERFACE "[Ondernemingen_Dev]": V[ONE*Onderneming] INTERFACE "[Onderneming_Dev]"
+INTERFACE "[Onderneming_Dev]": I[Onderneming] cRuD BOX <TABLE sortable>
+  [ "Handelsnaam": kvko_Handelsnaam cRud
+  , "KvK nummer" : kvko_KvKNummer
+  , "BTW nummer" : kvko_BTWNummer cRud
+  , "Rechtsvorm" : kvko_Rechtsvorm cRud
+  , "Eigenaar"   : kvko_Eigenaar;partyRef cRud
+  ]
+
+ENDCONTEXT

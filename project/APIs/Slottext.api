@@ -1,0 +1,65 @@
+CONTEXT "Slottext API" IN ENGLISH
+
+INCLUDE "./PartyContactData.api" --# [ "IncludeOndernemingAPI" ]
+
+sltxtPlaats   :: Slottext * City     [UNI]   REPRESENT City TYPE ALPHANUMERIC
+sltxtDatum    :: Slottext * Datum    [UNI]   REPRESENT Datum TYPE DATE
+sltxtTijdstip :: Slottext * Tijdstip [UNI]   REPRESENT Tijdstip TYPE DATETIME
+sltxtPartyRef :: Slottext * PartyRef [UNI]
+sltxtActorRef :: Slottext * ActorRef [UNI]
+sltxtProof    :: Slottext * Proof    [UNI]   REPRESENT Proof TYPE BIGALPHANUMERIC
+
+--[Define an API for inputing the form/fields]
+sltxtCredMD :: Slottext * CredMetaData [INJ,UNI]
+
+--#IFNOT AutoCreateCredMetaDataAtom
+credMDIsSlottext :: CredMetaData * CredMetaData [PROP]
+ROLE ExecEngine MAINTAINS "InsAtom and InsPair sltxtCredMD"
+RULE "InsAtom and InsPair sltxtCredMD": I[Slottext] |- sltxtCredMD;sltxtCredMD~
+VIOLATION (TXT "{EX} InsAtom;CredMetaData"
+          ,TXT "{EX} InsPair;credMDIsSlottext;CredMetaData;_NEW;CredMetaData;_NEW"
+          ,TXT "{EX} InsPair;sltxtCredMD;Slottext;", SRC I, TXT ";CredMetaData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom and DelPair credMDIsSlottext"
+RULE "DelAtom and DelPair credMDIsSlottext": credMDIsSlottext |- sltxtCredMD~;sltxtCredMD
+VIOLATION (TXT "{EX} DelAtom;CredMetaData;", SRC I)
+--#ENDIF
+
+VIEW SlottextCredInlezen: Slottext
+{ "formAtom"       : I                  -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "SlottextData" -- API through which credential data is read/issued
+, "credentialType" : TXT "Slottext"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData" -- API through which credential MetaData is read
+, "credmdAtom"     : sltxtCredMD        -- Atom where MetaData is read
+, "buttonText"     : TXT "Slottext inlezen"
+} HTML TEMPLATE "View-CredentialVerifyRequest.html" ENDVIEW
+
+VIEW SlottextCredUitgeven : Slottext
+{ "formAtom"       : I                  -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "SlottextData" -- API through which credential data is read/issued
+, "credentialType" : TXT "Slottext"     -- name of data object in the namespace of this application
+} HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+API "SlottextData": I[Slottext] CRud BOX
+   [ "plaats": sltxtPlaats cRUd
+   , "datum": sltxtDatum cRUd
+   , "tijdstip": sltxtTijdstip cRUd
+   , "party": sltxtPartyRef cRUd
+   , "actor": sltxtActorRef cRUd
+   , "proof": sltxtProof cRUd
+   ]
+
+--[Slottext maken op basis van een PartyContactData]
+sltxtPartyContactData :: Slottext * PartyContactData [UNI] -- De Partij die de slottekst ondertekent
+
+API "SlottextPartyContactData": sltxtPartyContactData API "PartyContactData"
+
+ROLE ExecEngine MAINTAINS "Slottext attributen invullen"
+RULE "Slottext attributen invullen": sltxtPartyContactData;pctctParty;partyRef |- sltxtPartyRef
+VIOLATION (TXT "{EX} InsPair;sltxtPartyRef;Slottext;", SRC I, TXT ";PartyRef;", TGT I
+          ,TXT "{EX} InsPair;sltxtActorRef;Slottext;", SRC I, TXT ";ActorRef;", TGT I
+          ,TXT "{EX} InsPair;sltxtDatum;Slottext;", SRC I, TXT ";Datum;{php}date(DATE_ISO8601)"
+          ,TXT "{EX} InsPair;sltxtTijdstip;Slottext;", SRC I, TXT ";Tijdstip;{php}date(DATE_ISO8601)"
+)
+
+ENDCONTEXT

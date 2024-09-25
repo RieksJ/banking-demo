@@ -1,0 +1,56 @@
+{
+    "meta": "placeholder",
+    "payload": {
+        "id": "attid:ErfenisRechthebbende:5ae4f5488d31e3fd4842",
+        "type": [
+            "ErfenisRechthebbende"
+        ],
+        "issuer": [
+            "https://rabo-walletproxy.ssi-lab.sensorlab.tno.nl"
+        ],
+        "summary": "Rechten m.b.t. overlijden van Catharina Klaassen",
+        "overlijden": {
+            "overledene": {
+                "geslachtsnaam": "Klaassen",
+                "eerstevoornaam": "Catharina",
+                "voornamen": "Catharina Amalia Cornelia",
+                "titel": null,
+                "geboortedatum": "1962-02-02",
+                "geboorteplaats": "Rotterdam",
+                "geboorteland": "Nederland",
+                "geslacht": "V"
+            },
+            "laatsteWoonadres": {
+                "straatnaam": "Tuinbouwlaan",
+                "huisnummer": "18",
+                "huisletter": null,
+                "huisnummertoevoeging": null,
+                "toevoeging": null,
+                "postcode": "3510AB",
+                "plaats": "Utrecht",
+                "gemeente": "Utrecht",
+                "provincie": null
+            },
+            "overlijdensdatum": "2021-02-02",
+            "overlijdensplaats": "Amsterdam",
+            "overlijdensgemeente": "Amsterdam"
+        },
+        "rechthebbende": {
+            "persoonsgegevens": {
+                "geslachtsnaam": "van der Kluns",
+                "roepnaam": "Pieter",
+                "eerstevoornaam": "Pieter",
+                "voornamen": "Pieter Jan",
+                "titel": "Jhr",
+                "geboortedatum": "1991-11-11",
+                "geboorteplaats": "Wassenaar",
+                "geboorteland": "Nederland",
+                "geslacht": "M"
+            }
+        },
+    "isErfgenaam": true,
+    "isBegrafenisexecuteur": true,
+    "isBeheersexecuteur": false,
+    "isAfwikkelingsbewindvoerder": false
+    }
+}

@@ -1,0 +1,27 @@
+CONTEXT "Physical Addresses Developer Interfaces"
+-- If you want to combine with Dutch addresses, use file "DutchAddr_Developer.ifc" --# [ "NoMainDevIfc" ] (which auto-includes this file)
+
+--#IFNOT NoMainDevIfc
+-- This is *the* entry point for developers. It should only be compiled for the main application itself.
+-- To allow other applications to provide their own developer's entry point, this section is not compiled by default.
+
+INCLUDE "../SIAMv4/SIAM_Developer.ifc" --# [ "NoMainDevIfc" ]     -- Includes interfaces [SESSION_Dev] and [SIAM_Dev]
+
+INTERFACE "[Dev]": "_SESSION";V[SESSION*ONE] cRud BOX <TABS>
+[ "SIAMv4":          I INTERFACE "[SIAM_Dev]"
+, "PhysicalAddr":   I INTERFACE "[PhysicalAddr_Dev]"
+]
+--#ENDIF
+
+INCLUDE "./PhysicalAddr.adl"
+
+INTERFACE "[PhysicalAddr_Dev]": V[ONE*PhysicalAddr] cRud BOX <TABLE sortable>
+    [ "AddrLine 1" : addrLine1 cRud
+    , "AddrLine 2" : addrLine2 cRud
+    , "AddrLine 3" : addrLine3 cRud
+    , "AddrLine 4" : addrLine4 cRud
+    , "AddrLine 5" : addrLine5 cRud
+    , "Label" : addrLabel cRud
+    ]
+
+ENDCONTEXT

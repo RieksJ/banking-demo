@@ -1,0 +1,25 @@
+CONTEXT "SIAM Views" IN ENGLISH
+
+VIEW AccountOneLineSummary: Account
+{ "item1": accActorRef
+--, "ignore2": I /\ accActorRef;I[IdentRef];accPartyRef~  -- property, saying whether or not 'item 2' stuff should be ignored
+, "pre2": TXT " ("
+-- , "item2": accPartyRef
+, "item2": (accPartyRef;I[IdentRef] /\ accActorRef;(V[IdentRef]-I[IdentRef]))
+        \/ (accPartyRef;I[IdentRef] /\ accActorRef);V[IdentRef];"persoonlijk"
+, "post2": TXT ")"
+} HTML TEMPLATE "View-ItemLines.html" ENDVIEW
+
+VIEW AccountTwoLineSummary: Account
+{ "item1": accActorRef
+, "crlf1": I
+--, "ignore2": I /\ accActorRef;I[IdentRef];accPartyRef~  -- property, saying whether or not 'item 2' stuff should be ignored
+, "pre2": TXT "("
+-- , "item2": accPartyRef
+, "item2": (accPartyRef;I[IdentRef] /\ accActorRef;(V[IdentRef]-I[IdentRef]))
+        \/ (accPartyRef;I[IdentRef] /\ accActorRef);V[IdentRef];"persoonlijk"
+, "post2": TXT ")"
+} HTML TEMPLATE "View-ItemLines.html" ENDVIEW
+
+
+ENDCONTEXT

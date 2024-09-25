@@ -1,0 +1,14 @@
+{
+    "payload": {
+        "rekeningnummer": "NL52INGB1075631211",
+        "persoonsgegevens": {
+            "geslachtsnaam": "van der Kluns",
+            "eerstevoornaam": "Pieter",
+            "voornamen": "Pieter Jan",
+            "geboortedatum": "1991-11-11",
+            "geboorteplaats": "Wassenaar",
+            "geboorteland": "Nederland",
+            "geslacht": "M"
+        }
+    }
+}

@@ -1,0 +1,42 @@
+CONTEXT "Login" IN ENGLISH
+-----------------------------------------------------------
+{- This file contains an INTERFACE by which a user can:
+- Login (with a username and password)
+- Register himself (i.e. just the username and password)
+This interface is here for the following purposes:
+- Testing the SIAM module
+- providing a template that Ampersand modelers can draw inspiration from
+-}
+
+INCLUDE "./SIAM_LoginWithUPW.adl"        -- Ensure login functionality is available.
+--#IFNOT NoRegistrationWithLogin
+INCLUDE "./SIAM_RegisterWithUPW.adl"     -- Extension that registers not-yet existing users that specify a U/PW.
+INCLUDE "./SIAM_RegisterWithUPW.ifc"     -- Interface for RegisterWithUPW Extension
+--#ENDIF
+
+INTERFACE "Login" FOR Anonymous: sessionIsAnon cRud BOX <RAW>
+--$This section allows users to login or register themselves
+   [ "Login bar": I-sessionAccRegForm;sessionAccRegForm~ cRud BOX <TABLE hideOnNoRecords>
+      [ "Userid": loginUserid cRUd
+      , "Password": loginPassword cRUd -- crUd is needed for Passwords
+      , " ": I cRud BOX <PROPBUTTON>
+         [ "label": TXT "Login"
+         , "property": sessionLoginReq cRUd
+         , "disabled": I - (loginUserid;loginUserid~ /\ loginPassword;loginPassword~) cRud
+         ]
+--#IFNOT NoRegistrationWithLogin
+      , "  ": I-sessionLoginAssist cRud BOX <PROPBUTTON>
+         [ "label": TXT "Register"
+         , "property": sessionCreateAccRegFormReq cRUd
+         , "disabled": I /\ sessionAccRegForm;sessionAccRegForm~ cRud
+         , "popovertext": TXT "Create a new account"
+         ]
+--#ENDIF
+      ]
+--#IFNOT NoRegistrationWithLogin
+   , "Registration": sessionAccRegForm INTERFACE "Register"
+--#ENDIF
+   ]
+
+-----------------------------------------------------------
+ENDCONTEXT

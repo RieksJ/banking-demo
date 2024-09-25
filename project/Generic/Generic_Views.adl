@@ -1,0 +1,51 @@
+CONTEXT "Generic Views"
+
+VIEW STRONG: IfcText HTML TEMPLATE "View-STRONG.html" ENDVIEW   REPRESENT IfcText TYPE ALPHANUMERIC
+
+POPULATION "IdentRef" CONTAINS [ "persoonlijk" ]
+
+--[Logos and Titles for INTERFACEs]
+CONCEPT InterfaceMetaData "an object for displaying a logo and an (INTERFACE)title"
+ifcTitle :: InterfaceMetaData * Title  [UNI]   REPRESENT Title  TYPE ALPHANUMERIC   -- title of the Inteface, e.g. 'Registration'
+sessionMsgIfcText :: SESSION * IfcText [UNI] -- Als je deze populeert verschijnt de tekst naast de titel voor minstens een aantal seconden
+
+sessionMsgOnScreen :: SESSION * IfcText [UNI] -- Tekst zoals die op het scherm staat
+sessionMsgDateTime :: SESSION * DateTime [UNI] -- Tijdstip waarop de laatste message gezet werd
+ROLE ExecEngine MAINTAINS "Zet ReqIfcText op het scherm"
+RULE "Zet ReqIfcText op het scherm": sessionMsgIfcText |- -V
+VIOLATION (TXT "{EX}_;InsPair_;sessionMsgOnScreen_;SESSION_;", SRC I, TXT "_;IfcText_;", TGT I
+          ,TXT "{EX} InsPair;sessionMsgDateTime;SESSION;", SRC I, TXT ";DateTime;", SRC lastAccess
+          ,TXT "{EX} InsPair;sessionTime;SESSION;", SRC I, TXT ";DateTime;", SRC lastAccess
+          ,TXT "{EX}_;DelPair_;sessionMsgIfcText_;SESSION_;", SRC I, TXT "_;IfcText_;", TGT I
+)
+lastAccess :: SESSION*DateTime [UNI] -- This relation is auto-updated by the prototype
+sessionTime :: SESSION * DateTime [UNI] -- Bijhouden van de tijd om verschil met MsgDateTime te kunnen bepalen
+sessionMsgEraseReq :: SESSION * BOOL [UNI]    POPULATION BOOL CONTAINS [ "TRUE", "FALSE" ]
+ROLE ExecEngine MAINTAINS "Updaten van sessionTime"
+RULE "Updaten van sessionTime": (I /\ sessionMsgOnScreen;sessionMsgOnScreen~);sessionTime |- lastAccess
+VIOLATION (TXT "{EX} InsPair;sessionTime;SESSION;", SRC I, TXT ";DateTime;", SRC lastAccess
+          ,TXT "{EX} InsPair;sessionMsgEraseReq;SESSION;", SRC I
+    , TXT ";BOOL;{php}(strtotime('", SRC lastAccess, TXT "')-strtotime('", SRC sessionMsgDateTime, TXT "'))>5?'TRUE':'FALSE'"
+)
+ROLE ExecEngine MAINTAINS "Verwijder ReqIfcText van scherm"
+RULE "Verwijder ReqIfcText van scherm": sessionMsgEraseReq |- sessionMsgEraseReq;"FALSE"
+VIOLATION (TXT "{EX}_;DelPair_;sessionMsgOnScreen_;SESSION_;", SRC I, TXT "_;IfcText_;", SRC sessionMsgOnScreen
+          ,TXT "{EX} DelPair;sessionMsgEraseReq;SESSION;", SRC I, TXT ";BOOL;", TGT I
+)
+
+VIEW InterfaceMetaData: InterfaceMetaData DEFAULT
+{ "ifcLogofile": V[InterfaceMetaData*I_Am];myLogofile
+, "ifcTitle": ifcTitle
+, "ifcMessage": V;"_SESSION";sessionMsgOnScreen
+} HTML TEMPLATE "View-InterfaceMetaData.html" ENDVIEW
+
+VIEW AmountInEuro: Amount DEFAULT
+{ "amount": I
+} HTML TEMPLATE "View-AmountInEuro.html" ENDVIEW
+
+VIEW BedragInEuro: Bedrag DEFAULT
+{ "amount": I
+} HTML TEMPLATE "View-AmountInEuro.html" ENDVIEW
+
+
+ENDCONTEXT

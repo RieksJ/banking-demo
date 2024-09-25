@@ -13,7 +13,7 @@ Een credential met daarin zulke gegevens wordt hier ingelezen en als volgt verwe
   - afwikkelingsbewindvoerder: beheersrechten (en daarmee automatisch ook inzien en overmaak rechten)
     Een afwikkelingsbewindvoerder kan dus ook gaan mandateren.
 -}
-INCLUDE "../APIs/VerklaringVanExecuteleData.api"
+INCLUDE "./APIs/VerklaringVanExecuteleData.api"
 
 --[VvExData in SESSIONs]
 sessionIsVvEx :: SESSION * SESSION [PROP] -- In de sessie zijn we bezig met het verwerken van een verklaring van erfrecht

@@ -1,0 +1,75 @@
+CONTEXT "VerklaringVanExecuteleData API"
+-- Verklaring van executele - zie Artikel 4:188 lid 1 BW
+-- Voorbeeld: https://www.infotaris.nl/wp-content/uploads/2020/01/verklaring-van-executele-voorbeeld.pdf
+
+INCLUDE "./CredMetaData.api"
+INCLUDE "./OverlijdensakteData.api"
+INCLUDE "./PartyContactData.api"
+INCLUDE "./CredMetaData.api"
+INCLUDE "./Slottext.api"
+
+vvexSummaryText         :: VerklaringVanExecuteleData * SummaryText      [UNI] -- a text that summarizes what the credential is about
+vvexErfenisZaak         :: VerklaringVanExecuteleData * ErfenisZaak      [UNI] -- Zaak van waaruit de verklaring van executele is aangemaakt
+vvexOverlijdensakteData :: VerklaringVanExecuteleData * OverlijdensakteData [UNI]
+vvexBegrafenisExecuteur :: VerklaringVanExecuteleData * PartyContactData [UNI] -- regelt de begrafenis/crematie
+vvexBeheersExecuteur    :: VerklaringVanExecuteleData * PartyContactData [UNI] -- wikkelt nalatenschap af (vereffent schulden/betaalt rekeningen)
+vvexAfwBewindvoerder    :: VerklaringVanExecuteleData * PartyContactData [UNI] -- wikkelt nalatenschap af en verdeelt de boedel onder erfgenamen
+
+REPRESENT VfdID, AttType, URL, SummaryText TYPE BIGALPHANUMERIC
+
+--[Define an API for inputing the form/fields]
+VIEW VerklaringVanExecuteleData: VerklaringVanExecuteleData
+{ "formAtom": I -- Atom-identifier
+, "ifcId": TXT "VerklaringVanExecuteleData" -- API through which credential data is read/issued
+, "attestationType": TXT "VerklaringVanExecuteleData" -- name of data object in the namespace of this application
+} ENDVIEW
+
+vvexCredMD :: VerklaringVanExecuteleData * CredMetaData [INJ,UNI]
+
+--#IFNOT AutoCreateCredMetaDataAtom
+credMDIsVerklaringVanExecuteleData :: CredMetaData * CredMetaData [PROP]
+ROLE ExecEngine MAINTAINS "InsAtom and InsPair vvexCredMD"
+RULE "InsAtom and InsPair vvexCredMD": I[VerklaringVanExecuteleData] |- vvexCredMD;vvexCredMD~
+VIOLATION (TXT "{EX} InsAtom;CredMetaData"
+          ,TXT "{EX} InsPair;credMDIsVerklaringVanExecuteleData;CredMetaData;_NEW;CredMetaData;_NEW"
+          ,TXT "{EX} InsPair;vvexCredMD;VerklaringVanExecuteleData;", SRC I, TXT ";CredMetaData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom and DelPair credMDIsVerklaringVanExecuteleData"
+RULE "DelAtom and DelPair credMDIsVerklaringVanExecuteleData": credMDIsVerklaringVanExecuteleData |- vvexCredMD~;vvexCredMD
+VIOLATION (TXT "{EX} DelAtom;CredMetaData;", SRC I)
+--#ENDIF
+
+VIEW VerklaringVanExecuteleCredInlezen: VerklaringVanExecuteleData
+{ "formAtom"       : I                                -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "VerklaringVanExecuteleData" -- API through which credential data is read/issued
+, "credentialType" : TXT "VerklaringVanExecutele"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"               -- API through which credential MetaData is read
+, "credmdAtom"     : vvexCredMD                       -- Atom where MetaData is read
+, "buttonText"     : TXT "Verkl. van Executele inlezen"
+} HTML TEMPLATE "View-CredentialVerifyRequest.html" ENDVIEW
+
+VIEW VerklaringVanExecuteleCredUitgeven : VerklaringVanExecuteleData
+{ "formAtom"       : I                                -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "VerklaringVanExecuteleData" -- API through which credential data is read/issued
+, "credentialType" : TXT "VerklaringVanExecutele"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"               -- API through which credential MetaData is read
+, "credmdAtom"     : vvexCredMD                       -- Atom where MetaData is read
+, "buttonText"     : TXT "Verklaring van Executele"
+} HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+API "VerklaringVanExecuteleData": I[VerklaringVanExecuteleData] CRud BOX
+    [ "summary": vvexSummaryText cRUd
+    , "overlijdensakte":     vvexOverlijdensakteData API "OverlijdensakteData"
+    , "begrafenisexecuteur": vvexBegrafenisExecuteur API "PartyContactData"
+    , "beheersexecuteur":    vvexBeheersExecuteur    API "PartyContactData"
+    , "afwbewindvoerder":    vvexAfwBewindvoerder    API "PartyContactData"
+    ]
+
+INTERFACE "VvExSamenvatting": I /\ vvexCredMD;credmdIsSuccess;vvexCredMD~ cRud BOX <FORM hideOnNoRecords>
+   [ "Overledene": vvexOverlijdensakteData;ovlakteOverlijdenData;ovlNP cRud
+   , "Begrafenis executeur": vvexBegrafenisExecuteur INTERFACE "ViewPartyContact"
+   , "Beheers executeur": vvexBeheersExecuteur INTERFACE "ViewPartyContact"
+   , "Afwikkelings bewindvoerder": vvexAfwBewindvoerder INTERFACE "ViewPartyContact"
+   ]
+
+ENDCONTEXT

@@ -1,0 +1,70 @@
+{
+    "meta": "placeholder",
+    "payload": {
+        "id": "attid:ErfenisRechthebbende:88d31e3fd5ae4f544842",
+        "type": [
+            "ErfenisRechthebbende"
+        ],
+        "issuer": [
+            "https://rabo-walletproxy.ssi-lab.sensorlab.tno.nl"
+        ],
+        "summary": "Rechten m.b.t. overlijden van Catharina Klaassen",
+        "overlijden": {
+            "overledene": {
+                "geslachtsnaam": "Klaassen",
+                "eerstevoornaam": "Catharina",
+                "voornamen": "Catharina Amalia Cornelia",
+                "titel": null,
+                "geboortedatum": "1962-02-02",
+                "geboorteplaats": "Rotterdam",
+                "geboorteland": "Nederland",
+                "geslacht": "V"
+            },
+            "laatsteWoonadres": {
+                "straatnaam": "Tuinbouwlaan",
+                "huisnummer": "18",
+                "huisletter": null,
+                "huisnummertoevoeging": null,
+                "toevoeging": null,
+                "postcode": "3510AB",
+                "plaats": "Utrecht",
+                "gemeente": "Utrecht",
+                "provincie": null
+            },
+            "overlijdensdatum": "2021-02-02",
+            "overlijdensplaats": "Amsterdam",
+            "overlijdensgemeente": "Amsterdam"
+        },
+        "rechthebbende": {
+            "persoonsgegevens":
+            {   "geslachtsnaam": "Klaassen",
+                "roepnaam": "Jan",
+                "eerstevoornaam": "Johannes",
+                "voornamen": "Johannes",
+                "titel": null,
+                "geboortedatum": "1961-01-01",
+                "geboorteplaats": "Amsterdam",
+                "geboorteland": "Nederland",
+                "geslacht": "M"
+            },
+            "postadres": {
+                "id": null,
+                "straatnaam": "Grazersplein",
+                "huisnummer": "3",
+                "huisletter": null,
+                "huisnummertoevoeging": null,
+                "toevoeging": null,
+                "postcode": "9705AB",
+                "plaats": "Groningen",
+                "gemeente": "Groningen",
+                "provincie": "Groningen"
+            },
+            "telefoonnummer": [ "+31611111111" ],
+            "emailadres": [ "jan.klaassen@gmail.com" ]
+        },
+    "isErfgenaam": true,
+    "isBegrafenisexecuteur": false,
+    "isBeheersexecuteur": false,
+    "isAfwikkelingsbewindvoerder": true
+    }
+}

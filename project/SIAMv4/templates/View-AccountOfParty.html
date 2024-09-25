@@ -1,0 +1,17 @@
+<!--
+VIEW AccountOfParty: Account
+{ "accIsNotPersonal": I - accActorRef;I[IdentRef];accPartyRef~
+, "accIsPartyAdmin": accIsPartyAdmin
+, "accIsSysAdmin": accIsSysAdmin
+, "accActorRef": accActorRef
+, "accPartyRef": accPartyRef
+} HTML TEMPLATE "View-AccountOfParty.html" ENDVIEW
+-->
+<div ng-repeat="resource in $if(exprIsUni)$(resource['$name$'] === null ? [] : [resource['$name$']])$else$resource['$name$']$endif$">
+	<span>{{resource._view_.accActorRef}}</span>
+	<span ng-if="resource._view_.accIsNotPersonal"><br/>
+		<span ng-if="resource._view_.accIsPartyAdmin">[{{resource._view_.accPartyRef}}]</span>
+		<span ng-if="!resource._view_.accIsPartyAdmin">({{resource._view_.accPartyRef}})</span>
+		<span ng-if="resource._view_.accIsSysAdmin">*</span>
+	</span>
+</div>

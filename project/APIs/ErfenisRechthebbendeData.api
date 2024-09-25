@@ -1,0 +1,119 @@
+CONTEXT "ErfenisRechthebbendeData API"
+
+INCLUDE "./CredMetaData.api"
+INCLUDE "./OverlijdenData.api"
+INCLUDE "./PartyContactData.api"
+
+erfshrErfenisZaak           :: ErfenisRechthebbendeData * ErfenisZaak          [UNI] -- De erfrecht-zaak waar de ErfenisRechthebbendeData over gaat
+erfshrOverlijdenData        :: ErfenisRechthebbendeData * OverlijdenData       [UNI]
+erfshrPartyContactData      :: ErfenisRechthebbendeData * PartyContactData     [UNI] -- De PartyContact die daarbij betrokken is
+erfshrIsErfgenaam           :: ErfenisRechthebbendeData * ErfenisRechthebbendeData [PROP]
+erfshrIsBegrafenisExecuteur :: ErfenisRechthebbendeData * ErfenisRechthebbendeData [PROP]
+erfshrIsBeheersExecuteur    :: ErfenisRechthebbendeData * ErfenisRechthebbendeData [PROP]
+erfshrIsAfwBewindvoerder    :: ErfenisRechthebbendeData * ErfenisRechthebbendeData [PROP]
+
+--[Define an API for inputing the form/fields]
+erfshrCredMD :: ErfenisRechthebbendeData * CredMetaData [INJ,UNI]
+
+VIEW ErfenisRechthebbendeData: ErfenisRechthebbendeData -- **obsolete**
+{ "formAtom": I -- Atom-identifier
+, "ifcId": TXT "ErfenisRechthebbendeData" -- API through which credential data is read/issued
+, "attestationType": TXT "ErfenisRechthebbendeData" -- name of data object in the namespace of this application
+} ENDVIEW
+
+--#IFNOT AutoCreateCredMetaDataAtom
+credMDIsErfenisRechthebbende :: CredMetaData * CredMetaData [PROP]
+ROLE ExecEngine MAINTAINS "InsAtom and InsPair erfshrCredMD"
+RULE "InsAtom and InsPair erfshrCredMD": I[ErfenisRechthebbendeData] |- erfshrCredMD;erfshrCredMD~
+VIOLATION (TXT "{EX} InsAtom;CredMetaData"
+          ,TXT "{EX} InsPair;credMDIsErfenisRechthebbende;CredMetaData;_NEW;CredMetaData;_NEW"
+          ,TXT "{EX} InsPair;erfshrCredMD;ErfenisRechthebbendeData;", SRC I, TXT ";CredMetaData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom and DelPair credMDIsErfenisRechthebbende"
+RULE "DelAtom and DelPair credMDIsErfenisRechthebbende": credMDIsErfenisRechthebbende |- erfshrCredMD~;erfshrCredMD
+VIOLATION (TXT "{EX} DelAtom;CredMetaData;", SRC I)
+--#ENDIF
+
+VIEW ErfenisRechthebbendeCredInlezen: ErfenisRechthebbendeData
+{ "formAtom"       : I                              -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "ErfenisRechthebbendeData" -- API through which credential data is read/issued
+, "credentialType" : TXT "ErfenisRechthebbendeData" -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"             -- API through which credential MetaData is read
+, "credmdAtom"     : erfshrCredMD                   -- Atom where MetaData is read
+, "buttonText"     : TXT "Verklaring van Erfrecht inlezen"
+} HTML TEMPLATE "View-CredentialVerifyRequest.html" ENDVIEW
+
+VIEW ErfenisRechthebbendeCredUitgeven : ErfenisRechthebbendeData
+{ "formAtom"       : I                               -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "ErfenisRechthebbendeData"  -- API through which credential data is read/issued
+, "credentialType" : TXT "ErfenisRechthebbendeData"  -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"              -- API through which credential MetaData is read
+, "credmdAtom"     : erfshrCredMD                    -- Atom where MetaData is read
+, "buttonText"     : TXT "Verklaring van Erfrecht"
+} HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+API "ErfenisRechthebbendeData": I[ErfenisRechthebbendeData] CRud BOX
+   [ "overlijden": erfshrOverlijdenData API "OverlijdenData"
+   , "rechthebbende": erfshrPartyContactData API "PartyContactData"
+   , "isErfgenaam": erfshrIsErfgenaam cRUd
+   , "isBegrafenisexecuteur": erfshrIsBegrafenisExecuteur cRUd
+   , "isBeheersexecuteur": erfshrIsBeheersExecuteur cRUd
+   , "isAfwikkelingsbewindvoerder": erfshrIsAfwBewindvoerder cRUd
+   ]
+
+INTERFACE "ErfenisRechthebbendeSamenvatting": I /\ erfshrCredMD;credmdIsSuccess;erfshrCredMD~ cRud BOX <FORM hideOnNoRecords>
+   [ "Overledene": erfshrOverlijdenData;ovlNP cRud
+   , "Rechthebbende": erfshrPartyContactData INTERFACE "ViewPartyContact"
+   , "Rechten": I INTERFACE "ErfenisRechthebbendeRechten"
+   ]
+
+INTERFACE "ErfenisRechthebbendeRechten": I[ErfenisRechthebbendeData] cRud BOX <RAW>
+   [ "0000": ((I-erfshrIsErfgenaam) /\ (I-erfshrIsBegrafenisExecuteur) /\ (I-erfshrIsBeheersExecuteur) /\ (I-erfshrIsAfwBewindvoerder)) ;V;"0000";statIfcText
+   , "0001": ((I-erfshrIsErfgenaam) /\ (I-erfshrIsBegrafenisExecuteur) /\ (I-erfshrIsBeheersExecuteur) /\   (erfshrIsAfwBewindvoerder)) ;V;"0001";statIfcText
+   , "0010": ((I-erfshrIsErfgenaam) /\ (I-erfshrIsBegrafenisExecuteur) /\   (erfshrIsBeheersExecuteur) /\ (I-erfshrIsAfwBewindvoerder)) ;V;"0010";statIfcText
+   , "0011": ((I-erfshrIsErfgenaam) /\ (I-erfshrIsBegrafenisExecuteur) /\   (erfshrIsBeheersExecuteur) /\   (erfshrIsAfwBewindvoerder)) ;V;"0011";statIfcText
+   , "0100": ((I-erfshrIsErfgenaam) /\   (erfshrIsBegrafenisExecuteur) /\ (I-erfshrIsBeheersExecuteur) /\ (I-erfshrIsAfwBewindvoerder)) ;V;"0100";statIfcText
+   , "0101": ((I-erfshrIsErfgenaam) /\   (erfshrIsBegrafenisExecuteur) /\ (I-erfshrIsBeheersExecuteur) /\   (erfshrIsAfwBewindvoerder)) ;V;"0101";statIfcText
+   , "0110": ((I-erfshrIsErfgenaam) /\   (erfshrIsBegrafenisExecuteur) /\   (erfshrIsBeheersExecuteur) /\ (I-erfshrIsAfwBewindvoerder)) ;V;"0110";statIfcText
+   , "0111": ((I-erfshrIsErfgenaam) /\   (erfshrIsBegrafenisExecuteur) /\   (erfshrIsBeheersExecuteur) /\   (erfshrIsAfwBewindvoerder)) ;V;"0111";statIfcText
+   , "1000": (  (erfshrIsErfgenaam) /\ (I-erfshrIsBegrafenisExecuteur) /\ (I-erfshrIsBeheersExecuteur) /\ (I-erfshrIsAfwBewindvoerder)) ;V;"1000";statIfcText
+   , "1001": (  (erfshrIsErfgenaam) /\ (I-erfshrIsBegrafenisExecuteur) /\ (I-erfshrIsBeheersExecuteur) /\   (erfshrIsAfwBewindvoerder)) ;V;"1001";statIfcText
+   , "1010": (  (erfshrIsErfgenaam) /\ (I-erfshrIsBegrafenisExecuteur) /\   (erfshrIsBeheersExecuteur) /\ (I-erfshrIsAfwBewindvoerder)) ;V;"1010";statIfcText
+   , "1011": (  (erfshrIsErfgenaam) /\ (I-erfshrIsBegrafenisExecuteur) /\   (erfshrIsBeheersExecuteur) /\   (erfshrIsAfwBewindvoerder)) ;V;"1011";statIfcText
+   , "1100": (  (erfshrIsErfgenaam) /\   (erfshrIsBegrafenisExecuteur) /\ (I-erfshrIsBeheersExecuteur) /\ (I-erfshrIsAfwBewindvoerder)) ;V;"1100";statIfcText
+   , "1101": (  (erfshrIsErfgenaam) /\   (erfshrIsBegrafenisExecuteur) /\ (I-erfshrIsBeheersExecuteur) /\   (erfshrIsAfwBewindvoerder)) ;V;"1101";statIfcText
+   , "1110": (  (erfshrIsErfgenaam) /\   (erfshrIsBegrafenisExecuteur) /\   (erfshrIsBeheersExecuteur) /\ (I-erfshrIsAfwBewindvoerder)) ;V;"1110";statIfcText
+   , "1111": (  (erfshrIsErfgenaam) /\   (erfshrIsBegrafenisExecuteur) /\   (erfshrIsBeheersExecuteur) /\   (erfshrIsAfwBewindvoerder)) ;V;"1111";statIfcText
+   ]
+
+statIfcText :: ErfSHRStatus * IfcText [UNI]
+POPULATION statIfcText CONTAINS [ ("0000","(heeft geen rechten)") ]
+POPULATION statIfcText CONTAINS [ ("0001","is Afwikkelingsbewindvoerder") ]
+POPULATION statIfcText CONTAINS [ ("0010","is Beheersexecuteur") ]
+POPULATION statIfcText CONTAINS [ ("0011","is Beheersexecuteur en Afwikkelingsbewindvoerder") ]
+POPULATION statIfcText CONTAINS [ ("0100","is Begrafenisexecuteur") ]
+POPULATION statIfcText CONTAINS [ ("0101","is Begrafenisexecuteur en Afwikkelingsbewindvoerder") ]
+POPULATION statIfcText CONTAINS [ ("0110","is Begrafenisexecuteur en Beheersexecuteur") ]
+POPULATION statIfcText CONTAINS [ ("0111","is Begrafenisexecuteur, Beheersexecuteur en Afwikkelingsbewindvoerder") ]
+POPULATION statIfcText CONTAINS [ ("1000","is Erfgenaam") ]
+POPULATION statIfcText CONTAINS [ ("1001","is Erfgenaam en Afwikkelingsbewindvoerder") ]
+POPULATION statIfcText CONTAINS [ ("1010","is Erfgenaam en Beheersexecuteur") ]
+POPULATION statIfcText CONTAINS [ ("1011","is Erfgenaam, Beheersexecuteur, en Afwikkelingsbewindvoerder") ]
+POPULATION statIfcText CONTAINS [ ("1100","is Erfgenaam en Begrafenisexecuteur") ]
+POPULATION statIfcText CONTAINS [ ("1101","is Erfgenaam, Begrafenisexecuteur, en Afwikkelingsbewindvoerder") ]
+POPULATION statIfcText CONTAINS [ ("1110","is Erfgenaam, Begrafenisexecuteur, en Beheersexecuteur") ]
+POPULATION statIfcText CONTAINS [ ("1111","is Erfgenaam, Begrafenisexecuteur, Beheersexecuteur, en Afwikkelingsbewindvoerder") ]
+
+erfshrProcessReq :: ErfenisRechthebbendeData * ErfenisRechthebbendeData [PROP]
+INTERFACE "[ErfenisRechthebbende_DEV]": V[ONE*ErfenisRechthebbendeData] cRuD BOX <TABLE sortable hideOnNoRecords>
+   [ "ErfenisZaak": erfshrErfenisZaak cRud
+   , "Overledene": erfshrOverlijdenData;ovlNP cRud
+   , "PartyContactData": erfshrPartyContactData INTERFACE "ViewPartyContact"
+   , "=Erfg": erfshrIsErfgenaam cRud
+   , "=1*": erfshrIsBegrafenisExecuteur cRud
+   , "=2*": erfshrIsBeheersExecuteur cRud
+   , "=3*": erfshrIsAfwBewindvoerder cRud
+   , "ProcessReq": erfshrProcessReq cRUd
+   ]
+
+ENDCONTEXT

@@ -12,7 +12,7 @@ Een credential met daarin zulke gegevens wordt hier ingelezen en als volgt verwe
     Als afwikkelingsbewindvoerder kan de partij dus ook gaan mandateren.
 -}
 
-INCLUDE "../APIs/ErfenisRechthebbendeData.api"
+INCLUDE "./APIs/ErfenisRechthebbendeData.api"
 
 --[ErfSHRData in SESSIONs]
 sessionIsErfSHR :: SESSION * SESSION [PROP] -- In de sessie zijn we bezig met het verwerken van een ErfenisRechthebbendeData

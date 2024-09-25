@@ -1,0 +1,31 @@
+CONTEXT "Organizations" IN ENGLISH
+
+CONCEPT Organization "an organized group of people with a particular purpose, such as a business or government department" "Oxford English Dictionary"
+
+--[Organization Reference]
+
+-- Note that `orgRef`is **NOT** INJ because applications that use SIAM cannot 'undo' that constraint.
+-- However, file "SIAMv4_Module-example.adl" includes the [UNI]-rules for them by default (which can be commented out)
+orgRef :: Organization * OrgRef  [UNI] MEANING "The human readable name/identifier to refer to the organization."
+
+REPRESENT OrgRef TYPE ALPHANUMERIC
+
+--[Organizations are Parties]
+-- See file: "SIAM_AccountSessionRoles.adl" for details about the underlying concepts.
+
+CLASSIFY Organization ISA Party
+CLASSIFY OrgRef       ISA PartyRef -- and thereby an IdentRef
+
+RULE "An Organization cannot own itself": I[Organization] |- -isOwnedBy -- Ownership lies with a Person or another Organization.
+
+ROLE ExecEngine MAINTAINS "InsPair partyRef from orgRef"
+RULE "InsPair partyRef from orgRef": orgRef[Organization*OrgRef] |- partyRef[Party*PartyRef]
+VIOLATION (TXT "{EX} InsPair;partyRef;Party;", SRC I[Party], TXT ";PartyRef;", TGT I[PartyRef])
+
+--[Generic Organization attributes]
+
+CLASSIFY OrgFullName ISA IdentRef -- This allows to test/ensure e.g. orgFullName |- orgRef
+orgFullName :: Organization * OrgFullName [UNI] MEANING "The long (full) name by which the organization may be identified."
+orgLogoURL  :: Organization * URL [UNI] MEANING "The URL at which the logo of the organization can be found."
+
+ENDCONTEXT

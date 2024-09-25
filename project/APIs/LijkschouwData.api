@@ -1,0 +1,59 @@
+CONTEXT "LijkschouwData API"
+
+INCLUDE "./CredMetaData.api"
+
+lkschouwVfdID        :: LijkschouwData * VfdID [INJ,UNI] -- identifier of the credential from which the SRC object was created
+lkschouwDoodsoorzaak :: LijkschouwData * Doodsoorzaak [UNI]
+lkschouwNatDood      :: LijkschouwData * Boolean [UNI]  -- True=Natuurlijke dood
+lkschouwPlaats       :: LijkschouwData * City [UNI] -- Plaats van de lijkschouw
+lkschouwDatum        :: LijkschouwData * Datum [UNI] -- Datum van de lijkschouw
+
+REPRESENT VfdID, AttType, URL, SummaryText TYPE BIGALPHANUMERIC
+REPRESENT Doodsoorzaak TYPE ALPHANUMERIC
+REPRESENT Boolean TYPE BOOLEAN
+
+--[Define an API for inputing the form/fields]
+lkschouwCredMD :: LijkschouwData * CredMetaData [INJ,UNI]
+
+--#IFNOT AutoCreateCredMetaDataAtom
+credMDIsLijkschouwData :: CredMetaData * CredMetaData [PROP]
+ROLE ExecEngine MAINTAINS "InsAtom and InsPair lkschouwCredMD"
+RULE "InsAtom and InsPair lkschouwCredMD": I[LijkschouwData] |- lkschouwCredMD;lkschouwCredMD~
+VIOLATION (TXT "{EX} InsAtom;CredMetaData"
+          ,TXT "{EX} InsPair;credMDIsLijkschouwData;CredMetaData;_NEW;CredMetaData;_NEW"
+          ,TXT "{EX} InsPair;lkschouwCredMD;LijkschouwData;", SRC I, TXT ";CredMetaData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom and DelPair credMDIsLijkschouwData"
+RULE "DelAtom and DelPair credMDIsLijkschouwData": credMDIsLijkschouwData |- lkschouwCredMD~;lkschouwCredMD
+VIOLATION (TXT "{EX} DelAtom;CredMetaData;", SRC I)
+--#ENDIF
+
+VIEW LijkschouwCredInlezen: LijkschouwData
+{ "formAtom"       : I                    -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "LijkschouwData" -- API through which credential data is read/issued
+, "credentialType" : TXT "Lijkschouw"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"   -- API through which credential MetaData is read
+, "credmdAtom"     : lkschouwCredMD       -- Atom where MetaData is read
+, "buttonText"     : TXT "s inlezen"
+} HTML TEMPLATE "View-CredentialVerifyRequest.html" ENDVIEW
+
+VIEW LijkschouwCredUitgeven : LijkschouwData
+{ "formAtom"       : I                    -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "LijkschouwData" -- API through which credential data is read/issued
+, "credentialType" : TXT "Lijkschouw"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"   -- API through which credential MetaData is read
+, "credmdAtom"     : lkschouwCredMD       -- Atom where MetaData is read
+, "buttonText"     : TXT "Lijkschouw credential"
+} HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+API "LijkschouwData": I[LijkschouwData] CRud BOX
+    [ "id": lkschouwVfdID cRUd
+  --, "type": lkschouwType CRUd -- commented out, because of issues with structure (UNI/TOT stuff in JSON)
+  --, "issuer": lkschouwIssuer CRUd -- commented out, because of issues with structure (UNI/TOT stuff in JSON)
+    , "doodsoorzaak": lkschouwDoodsoorzaak cRUd
+    , "natuurlijkeDood": lkschouwNatDood cRUd
+    , "plaats": lkschouwPlaats cRUd
+    , "datum": lkschouwDatum cRUd
+    ]
+
+ENDCONTEXT

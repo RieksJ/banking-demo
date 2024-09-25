@@ -1,0 +1,57 @@
+CONTEXT "Generic_Attestations"
+PURPOSE CONTEXT "Generic_Attestations" {+ The purpose of this file is to specify functionality
+- that maintains the history of issued credentials
+- and automatically revokes credentials that are not the most recent ones.
++}
+
+CONCEPT AttVar "variable, the contents of which is the payload of an credential that has been issued to a specific party"
+CONCEPT AttVal "contents of an AttVar"
+
+varValue :: AttVar * AttVal     [UNI]     -- The current status has a history of assignments
+varHead  :: AttVar * Assmnt [INJ,UNI,TOT] -- Most recent assignment, i.e. assignment by which the current value was assigned.
+assVal   :: Assmnt * AttVal     [UNI]     -- value that was assigned by this assignment. Note that it can be NULL (in case the value was deleted)
+assVar   :: Assmnt * AttVar     [UNI,TOT] -- variable to which a value was assigned.
+assTime  :: Assmnt * DateTime   [UNI,TOT]    REPRESENT DateTime TYPE DATETIME
+-- isSuccOf :: Assmnt * Assmnt [INJ,UNI,IRF,ASY] -- **`IRF` fails - see Issue #865** SRC Assmnt is successor of TGT Assmnt
+isSuccOf :: Assmnt * Assmnt [INJ,UNI,ASY] -- SRC Assmnt is successor of TGT Assmnt
+
+RULE "The trace of an AttVar is an Assmnt that has no successors" : -(isSuccOf;varHead~)
+RULE "Every Assmnt has a successor, or it assigns the current AttVal of an AttVar": V[ONE*Assmnt];isSuccOf \/ V[ONE*AttVar];varHead
+RULE "If one Assmnt precedes another, they affect the same AttVar" : assVar~;isSuccOf;assVar |- I
+
+ROLE ExecEngine MAINTAINS "Create Assmnt when a new or different AttVal gets assigned to an AttVar"
+RULE "Create Assmnt when a new or different AttVal gets assigned to an AttVar": varValue |- varHead;assVal
+VIOLATION (TXT "{EX} InsAtom;Assmnt" -- Create new atom of type Assmnt
+          ,TXT "{EX} InsPair;isSuccOf;Assmnt;_NEW;Assmnt;", SRC varHead
+          ,TXT "{EX} InsPair;assVar;Assmnt;_NEW;AttVar;", SRC I
+          ,TXT "{EX} InsPair;assVal;Assmnt;_NEW;AttVal;", TGT I
+          ,TXT "{EX} InsPair;varHead;AttVar;", SRC I, TXT ";Assmnt;_NEW"
+          ,TXT "{EX} InsPair;assTime;Assmnt;_NEW;DateTime;{php}date(DATE_ISO8601)"
+          )
+
+ROLE ExecEngine MAINTAINS "Create Assmnt when an AttVal gets deassigned from an AttVar"
+RULE "Create Assmnt when an AttVal gets deassigned from an AttVar": I - varValue;varValue~ |- varHead;(I - assVal;assVal~);varHead~
+VIOLATION (TXT "{EX} InsAtom;Assmnt" -- Create new atom of type Assmnt
+          ,TXT "{EX} InsPair;isSuccOf;Assmnt;_NEW;Assmnt;", SRC varHead
+          ,TXT "{EX} InsPair;assVar;Assmnt;_NEW;AttVar;", SRC I
+          ,TXT "{EX} InsPair;varHead;AttVar;", SRC I, TXT ";Assmnt;_NEW"
+          ,TXT "{EX} InsPair;assTime;Assmnt;_NEW;DateTime;{php}date(DATE_ISO8601)"
+          )
+
+--#IF Debugging
+POPULATION IfcText CONTAINS [ "Trace" ]
+INTERFACE "OVERVIEW": V[SESSION*AttVar] CRuD BOX <TABLE sortable hideOnNoRecords>
+   [ "AttVar": I cRud
+   , "AttVal": varValue cRUD
+   , "Assmnts": assVar~ cRud BOX <TABLE sortable hideOnNoRecords>
+      [ "Assmnt": I cRud
+      , "IsSuccOf": isSuccOf cRud
+      , "AttVar": assVar cRud
+      , "AttVal": assVal cRud
+      , "Timestamp": assTime cRud
+      , " ": (I /\ varHead~;varHead);V;"Trace"[IfcText] cRud
+      ]
+   ]
+--#ENDIF
+
+ENDCONTEXT

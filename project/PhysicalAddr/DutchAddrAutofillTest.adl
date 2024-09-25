@@ -1,0 +1,40 @@
+CONTEXT DutchAddrAutofillTest
+-- The purpose of this file is to allow for testing the automated filling in of DutchAddres
+-- The `README.md` file contains the instructions for installation, testing etc.
+
+INCLUDE "./DutchAddrAutofill.adl"
+
+sessionShowDetails :: SESSION * SESSION [PROP]
+
+POPULATION IfcText CONTAINS [ "Adres/Postcode bestaat niet"]
+INTERFACE "Test DutchAddr Autofill": I[SESSION] CRuD BOX <RAW form>
+   [ "HighLevel": (I-sessionShowDetails) cRud BOX <RAW form>
+      [ " ": V[SESSION*DutchAddr] CRuD BOX <TABLE>
+         [ "Postcode" : daddrZIPCode cRUd
+         , "Huisnummer" : daddrStreetNr cRUd
+         , "Adres" : (I-daddrPostcodeErr);addrLabel cRud
+         , " ": daddrPostcodeErr;V;"Adres/Postcode bestaat niet"[IfcText]
+         ]
+      ]
+   , "Details": sessionShowDetails cRud BOX <RAW form>
+      [ " ": V[SESSION*DutchAddr] CRuD BOX <TABLE>
+         [ "Straat" : daddrStreet cRud
+         , "Huisnummer" : daddrStreetNr cRUd
+         , "Toevoeging" : daddrStrNrAddition cRud
+         , "Huisletter" : daddrStrNrLetter cRud
+         , "Postcode" : daddrZIPCode cRUd
+         , "Plaats" : daddrCity cRud
+         , "Gemeente" : daddrMunicipality cRud
+         , "Provincie" : daddrProvince cRud
+         , "Kadaster-ID" : daddrID cRud
+         , "Adres" : (I-daddrPostcodeErr);addrLabel cRud
+         , " ": daddrPostcodeErr;V;"Adres/Postcode bestaat niet"[IfcText]
+         ]
+      ]
+   , "ButtonBar": I cRud BOX <TABLE noHeader>
+      [ "Show Details": I-sessionShowDetails cRud BOX <PROPBUTTON> [ property: sessionShowDetails cRUd ]
+      , "Hide Details":   sessionShowDetails cRud BOX <PROPBUTTON> [ property: sessionShowDetails cRUd ]
+      ]
+   ]
+
+ENDCONTEXT

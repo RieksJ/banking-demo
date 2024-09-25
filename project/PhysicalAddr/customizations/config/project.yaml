@@ -1,0 +1,18 @@
+# Ampersand Prototype Framework project specific settings
+# This file contains a list of all settings that overwrite the default settings
+# This file is automatically loaded when located at '/config/project.yaml'
+# See defaultSettings.yaml for list of all possible settings
+
+## Key/value pair list of config settings
+settings:
+  postcodeAPI.X-Api-Key: WZTkw5HolYamY4bIjuGQa77hPktrcDyR9GE1bO4h
+
+## List of other config files
+# config:
+#   - path/to/other/config.yaml
+
+## Named list of extensions
+# extensions:
+#   ExtensionXYZ:
+#     bootstrap:
+#     config:

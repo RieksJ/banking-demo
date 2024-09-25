@@ -1,0 +1,62 @@
+CONTEXT "VerklaringVanErfrechtData API"
+
+INCLUDE "./CredMetaData.api"
+INCLUDE "./PartyContactData.api" --# [ "IncludeOndernemingAPI" ]
+INCLUDE "./Slottext.api"
+
+--[Verklaring van Erfrecht]
+CLASSIFY VerklaringVanErfrechtData ISA XForm
+vvErfrOverlijden :: VerklaringVanErfrechtData * OverlijdensakteData [UNI]
+vvErfrTestament  :: VerklaringVanErfrechtData * Boolean [UNI]
+vvErfrErfgenamen :: VerklaringVanErfrechtData * ErfgenaamData [UNI]
+
+REPRESENT Boolean TYPE BOOLEAN
+
+--[Define an API for inputing the form/fields]
+VIEW VerklaringVanErfrechtData: VerklaringVanErfrechtData
+{ "formAtom": I -- Atom-identifier
+, "ifcId": TXT "VerklaringVanErfrechtData" -- API through which credential data is read/issued
+, "attestationType": TXT "VerklaringVanErfrechtData" -- name of data object in the namespace of this application
+} ENDVIEW
+
+vvErfrCredMD :: VerklaringVanErfrechtData * CredMetaData [INJ,UNI]
+
+--#IFNOT AutoCreateCredMetaDataAtom
+credMDIsVerklaringVanErfrechtData :: CredMetaData * CredMetaData [PROP]
+ROLE ExecEngine MAINTAINS "InsAtom and InsPair vvErfrCredMD"
+RULE "InsAtom and InsPair vvErfrCredMD": I[VerklaringVanErfrechtData] |- vvErfrCredMD;vvErfrCredMD~
+VIOLATION (TXT "{EX} InsAtom;CredMetaData"
+          ,TXT "{EX} InsPair;credMDIsVerklaringVanErfrechtData;CredMetaData;_NEW;CredMetaData;_NEW"
+          ,TXT "{EX} InsPair;vvErfrCredMD;VerklaringVanErfrechtData;", SRC I, TXT ";CredMetaData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom and DelPair credMDIsVerklaringVanErfrechtData"
+RULE "DelAtom and DelPair credMDIsVerklaringVanErfrechtData": credMDIsVerklaringVanErfrechtData |- vvErfrCredMD~;vvErfrCredMD
+VIOLATION (TXT "{EX} DelAtom;CredMetaData;", SRC I)
+--#ENDIF
+
+VIEW VerklaringVanErfrechtCredInlezen: VerklaringVanErfrechtData
+{ "formAtom"       : I                               -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "VerklaringVanErfrechtData" -- API through which credential data is read/issued
+, "credentialType" : TXT "VerklaringVanErfrecht"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"              -- API through which credential MetaData is read
+, "credmdAtom"     : vvErfrCredMD                    -- Atom where MetaData is read
+, "buttonText"     : TXT "Verkl. van Erfrecht inlezen"
+} HTML TEMPLATE "View-CredentialVerifyRequest.html" ENDVIEW
+
+VIEW VerklaringVanErfrechtCredUitgeven : VerklaringVanErfrechtData
+{ "formAtom"       : I                               -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "VerklaringVanErfrechtData" -- API through which credential data is read/issued
+, "credentialType" : TXT "VerklaringVanErfrecht"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"              -- API through which credential MetaData is read
+, "credmdAtom"     : vvErfrCredMD                    -- Atom where MetaData is read
+, "buttonText"     : TXT "Verklaring van Erfrecht"
+} HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+API "VerklaringVanErfrechtData": I[VerklaringVanErfrechtData] CRud BOX
+    [ "betrokkene": pctctNP API "NatuurlijkPersoonData"
+    , "overlijden": vvErfrOverlijden cRUd
+    , "testament": vvErfrTestament cRUd
+    , "erfgenamen": vvErfrErfgenamen cRUd
+    ]
+
+ENDCONTEXT

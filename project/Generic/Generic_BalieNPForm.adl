@@ -1,0 +1,78 @@
+CONTEXT Generic_BalienpForm
+{- (P.M.: Zie ook file "Generic_SessionnpForm.adl" en file "Generic_NPLogin.adl")
+Net als file "Generic_SessionnpForm.adl" breidt dit bestand de importer voor persoonsgegevensattestaties (file "../APIs/NatuurlijkPersoon.api") uit,
+door een NPForm aan een sessie te hangen, alsook het resultaat daarvan (een NatuurlijkPersoon).
+Het verschil met file "Generic_SessionnpForm.adl" is dat we hier een balieklant mee kunnen identificeren in plaats van de sessie-user
+Verder is het precies hetzelfde.
+-}
+
+INCLUDE "./APIs/NatuurlijkPersoon.api"
+
+balieNP :: SESSION * NatuurlijkPersoon -- de (geregistreerde) NatuurlijkPersoon die middels de NPForm aan de balie is geidentificeerd
+balienpForm :: SESSION * NPForm [INJ,UNI] -- Only one registration form allowed in any balie.
+
+ROLE ExecEngine MAINTAINS "Create new balienpForm"
+RULE "Create new balienpForm": I[SESSION] |- balieNP;balieNP~ \/ balienpForm;balienpForm~
+VIOLATION (TXT "{EX} InsAtom;NPForm"
+          ,TXT "{EX} InsPair;balienpForm;SESSION;", SRC I, TXT ";NPForm;_NEW"
+          ,TXT "{EX} InsPair;npFormCreateNPReq;NPForm;_NEW;NPForm;_NEW" -- Automatically create NP when necessary
+        --   ,TXT "{EX} SetNavToOnCommit;", SRC V;"NPForm";ftName~;ftCreateNavToIfc
+          )
+ROLE ExecEngine MAINTAINS "Delete balienpForm"
+RULE "Delete balienpForm": (I /\ balieNP;balieNP~);balienpForm |- -V
+VIOLATION (TXT "{EX} DelAtom;NPForm;", TGT I
+        --   ,TXT "{EX} SetNavToOnCommit;", SRC V;"NPForm";ftName~;ftExitNavToIfc
+          )
+
+--[When the SessionnpForm is clean, so is the NPForm]
+-- Applicaties die dit bestand gebruikenmogen zelf npFormIsClean zetten o.b.v. het hieronder staande
+--#IFNOT AppDefinesBalienpFormIsClean
+    ROLE ExecEngine MAINTAINS "InsPair npFormIsClean for balienpForms"
+    RULE "InsPair npFormIsClean for balienpForms":
+        I[NPForm] /\ balienpForm~;balienpForm -- where `balienpForm` is the relation by which the NPForm is linked to another form, a session, or ...
+        /\ npFormVfdID;npFormVfdID~
+   --   /\ npFormType;npFormType~
+   --   /\ npFormIssuer;npFormIssuer~
+   --   /\ npFormSummaryText;npFormSummaryText~
+        /\ npFormGeslachtsnaam;npFormGeslachtsnaam~
+        /\ npFormVoornamen;npFormVoornamen~
+   --   /\ npFormEersteVoornaam;npFormEersteVoornaam~
+   --   /\ npFormGeboortedatum;npFormGeboortedatum~
+   --   /\ npFormGeboorteplaats;npFormGeboorteplaats~
+   --   /\ npFormGeboorteland;npFormGeboorteland~
+   --   /\ npFormGeslacht;npFormGeslacht~
+   --   /\ npFormTitel;npFormTitel~
+    |-  npFormIsClean
+    VIOLATION (TXT "{EX} InsPair;npFormIsClean;NPForm;", SRC I, TXT ";NPForm;", TGT I)
+    ROLE ExecEngine MAINTAINS "DelPair npFormIsClean for balienpForms"
+    RULE "DelPair npFormIsClean for balienpForms":
+        npFormIsClean /\ balienpForm~;balienpForm -- where `balienpForm` is the relation by which the NPForm is linked to another form, a session, or ...
+    |-  I[NPForm]
+        /\ npFormVfdID;npFormVfdID~
+   --   /\ npFormType;npFormType~
+   --   /\ npFormIssuer;npFormIssuer~
+   --   /\ npFormSummaryText;npFormSummaryText~
+        /\ npFormGeslachtsnaam;npFormGeslachtsnaam~
+        /\ npFormVoornamen;npFormVoornamen~
+   --   /\ npFormEersteVoornaam;npFormEersteVoornaam~
+   --   /\ npFormGeboortedatum;npFormGeboortedatum~
+   --   /\ npFormGeboorteplaats;npFormGeboorteplaats~
+   --   /\ npFormGeboorteland;npFormGeboorteland~
+   --   /\ npFormGeslacht;npFormGeslacht~
+   --   /\ npFormTitel;npFormTitel~
+    VIOLATION (TXT "{EX} DelPair;npFormIsClean;NPForm;", SRC I, TXT ";NPForm;", TGT I)
+--#ENDIF
+
+--[Alles klaarzetten om een NatuurlijkPersoon te registreren of in te loggen]
+ROLE ExecEngine MAINTAINS "InsPair balieNP (based on balienpForm)"
+RULE "InsPair balieNP (based on balienpForm)": balienpForm;npFormNP |- balieNP
+VIOLATION (TXT "{EX} InsPair;balieNP;SESSION;", SRC I, TXT ";NatuurlijkPersoon;", TGT I
+          ,TXT "{EX} DelAtom;NPForm;", SRC balienpForm -- Discard the form we used
+          )
+{- Omdat ook op andere/custom manieren een balieNP tot stand kan komen (zie bijv. CZ),
+moeten we `balieNP` niet zomaar depopuleren, maar dat aan de applicatie overlaten
+ROLE ExecEngine MAINTAINS "DelPair balieNP (based on balienpForm)"
+RULE "DelPair balieNP (based on balienpForm)": balieNP |- balienpForm;npFormNP
+VIOLATION (TXT "{EX} DelPair;balieNP;SESSION;", SRC I, TXT ";NatuurlijkPersoon;", TGT I)
+-}
+ENDCONTEXT

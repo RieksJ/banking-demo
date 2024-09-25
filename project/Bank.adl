@@ -1,8 +1,9 @@
 CONTEXT Bank IN DUTCH
 
 --[Generic stuff]
-  INCLUDE "../Generic/Generic_Loader.adl" -- Generic VIEWs, SIAM stuff, NatuurlijkPersoon extensions, etc.
-
+--INCLUDE "./Generic/Generic_Loader.adl" -- Generic VIEWs, SIAM stuff, NatuurlijkPersoon extensions, etc.
+  INCLUDE "./Bank_SIAMv4_Module.adl"
+  
 --[Initial Populations]
   INCLUDE "./Bank_BankEnRekeningenRegister.xlsx" -- Default contents of bank accounts of various people and different banks
 

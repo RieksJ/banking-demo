@@ -1,0 +1,24 @@
+<!-- 'ItemLines' allows you to show a bit more complex data related to a concept in one or more lines:
+VIEW BrekNameTwoLineSummary: Bankrekening
+{ "item1": brekIBAN
+, "crlf1": I /\ brekNaam;brekNaam~ -- property, saying whether or not a <br/> should be added after the line
+, "ignore2": I /\ brekNaam;brekNaam~ -- property, saying whether or not 'item 2' stuff should be ignored
+, "pre2": TXT "("
+, "item2": brekNaam
+, "post2": TXT ")"
+} HTML TEMPLATE "View-ItemLines.html" ENDVIEW
+-->
+<div ng-repeat="resource in $if(exprIsUni)$(resource['$name$'] === null ? [] : [resource['$name$']])$else$resource['$name$']$endif$">
+	<span ng-if="!resource._view_.ignore1">
+		{{resource._view_.pre1}}{{resource._view_.item1}}{{resource._view_.post1}}
+		<span ng-if="resource._view_.crlf1"><br/></span>
+	</span>
+	<span ng-if="!resource._view_.ignore2">
+		{{resource._view_.pre2}}{{resource._view_.item2}}{{resource._view_.post2}}
+		<span ng-if="resource._view_.crlf2"><br/></span>
+	</span>
+	<span ng-if="!resource._view_.ignore3">
+		{{resource._view_.pre3}}{{resource._view_.item3}}{{resource._view_.post3}}
+		<span ng-if="resource._view_.crlf3"><br/></span>
+	</span>
+</div>

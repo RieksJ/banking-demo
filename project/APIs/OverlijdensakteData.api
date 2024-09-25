@@ -1,0 +1,87 @@
+CONTEXT "OverlijdensakteData API"
+
+INCLUDE "./CredMetaData.api"
+INCLUDE "./OverlijdenData.api"
+INCLUDE "./LijkschouwData.api"
+INCLUDE "./Slottext.api"
+
+--ovlakteVfdID          :: OverlijdensakteData * VfdID      [INJ,UNI] -- identifier of the credential from which the SRC object was created
+ovlakteOverlijdenData :: OverlijdensakteData * OverlijdenData [UNI]
+ovlakteLijkschouwData :: OverlijdensakteData * LijkschouwData [UNI]
+ovlakteSlottext       :: OverlijdensakteData * Slottext [UNI]
+
+REPRESENT Doodsoorzaak TYPE ALPHANUMERIC
+REPRESENT Boolean TYPE BOOLEAN
+
+--[Aanmaken van AttSummary]
+ovlakteSubjectRef  :: OverlijdensakteData * PartyRef    [UNI] -- Tekstuele representatie van de overledene
+ovlakteSummaryText :: OverlijdensakteData * SummaryText [UNI]    REPRESENT SummaryText TYPE BIGALPHANUMERIC
+
+ROLE ExecEngine MAINTAINS "InsPair ovlakteSummaryText"
+RULE "InsPair ovlakteSummaryText": ovlakteOverlijdenData;ovlNP;partyRef |- ovlakteSubjectRef
+VIOLATION (TXT "{EX} InsPair;ovlakteSubjectRef;OverlijdensakteData;", SRC I, TXT ";PartyRef;", TGT I
+          ,TXT "{EX} InsPair;ovlakteSummaryText;OverlijdensakteData;", SRC I, TXT ";SummaryText;OverlijdensakteData betreffende ", TGT I
+)
+
+--[Define an API for inputing the form/fields]
+ovlakteCredMD :: OverlijdensakteData * CredMetaData [INJ,UNI]
+
+--#IFNOT AutoCreateCredMetaDataAtom
+credMDIsOverlijdensakteData :: CredMetaData * CredMetaData [PROP]
+ROLE ExecEngine MAINTAINS "InsAtom and InsPair ovlakteCredMD"
+RULE "InsAtom and InsPair ovlakteCredMD": I[OverlijdensakteData] |- ovlakteCredMD;ovlakteCredMD~
+VIOLATION (TXT "{EX} InsAtom;CredMetaData"
+          ,TXT "{EX} InsPair;credMDIsOverlijdensakteData;CredMetaData;_NEW;CredMetaData;_NEW"
+          ,TXT "{EX} InsPair;ovlakteCredMD;OverlijdensakteData;", SRC I, TXT ";CredMetaData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom and DelPair credMDIsOverlijdensakteData"
+RULE "DelAtom and DelPair credMDIsOverlijdensakteData": credMDIsOverlijdensakteData |- ovlakteCredMD~;ovlakteCredMD
+VIOLATION (TXT "{EX} DelAtom;CredMetaData;", SRC I)
+--#ENDIF
+
+VIEW OverlijdensakteCredInlezen: OverlijdensakteData
+{ "formAtom"       : I                         -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "OverlijdensakteData" -- API through which credential data is read/issued
+, "credentialType" : TXT "Overlijdensakte"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"        -- API through which credential MetaData is read
+, "credmdAtom"     : ovlakteCredMD             -- Atom where MetaData is read
+, "buttonText"     : TXT "Overlijdensakte inlezen"
+} HTML TEMPLATE "View-CredentialVerifyRequest.html" ENDVIEW
+
+VIEW OverlijdensakteCredUitgeven : OverlijdensakteData
+{ "formAtom"       : I                         -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "OverlijdensakteData" -- API through which credential data is read/issued
+, "credentialType" : TXT "Overlijdensakte"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"        -- API through which credential MetaData is read
+, "credmdAtom"     : ovlakteCredMD             -- Atom where MetaData is read
+, "buttonText"     : TXT "Overlijdensakte credential"
+} HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+API "OverlijdensakteData": I[OverlijdensakteData] CRud BOX
+   [ "summary": ovlakteSummaryText cRUd
+   , "overlijden": ovlakteOverlijdenData API "OverlijdenData"
+   , "lijkschouw": ovlakteLijkschouwData API "LijkschouwData"
+   , "slottext": ovlakteSlottext API "SlottextData"
+   ]
+
+--[VIEWs en INTERFACEs voor het inzien van OverlijdenData]
+VIEW "OverlijdensakteOverlijdenstatement": OverlijdensakteData
+{ "Op": TXT "Op "
+, "datum": ovlakteOverlijdenData;ovlDatum
+, "is": TXT " is "
+, "[overledene]": ovlakteSubjectRef
+, "plaastgevonden": TXT " overleden te "
+, "plaats": ovlakteOverlijdenData;ovlPlaats
+} ENDVIEW
+
+VIEW "Overlijdensakte_Overledene": OverlijdensakteData
+{ "[overledene]": ovlakteSubjectRef
+} ENDVIEW
+
+VIEW "Overlijdensakte_PlaatsEnDatumVanOverlijden": OverlijdensakteData
+{ "plaats": ovlakteOverlijdenData;ovlPlaats
+, ",": TXT ", "
+, "datum": ovlakteOverlijdenData;ovlDatum
+} ENDVIEW
+
+ENDCONTEXT

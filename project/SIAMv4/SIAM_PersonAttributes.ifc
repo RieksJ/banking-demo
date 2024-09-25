@@ -1,0 +1,35 @@
+CONTEXT "Person Attributes" IN ENGLISH
+-- We define the attributes (and interfaces) separately so that applications can do their own things with them.
+
+INCLUDE "./SIAM_PersonAttributes.adl"
+
+personEditing :: Person * Person [PROP] -- Applications may specify rules for this property to prevent inadvertent editing.
+
+INTERFACE "Person": I[Person] cRud BOX <RAW form>
+    [ "Register": I-personRef;personRef~ cRud BOX <FORM>
+        [ "Short name": personRef cRUd
+        , "First Name": personFirstName cRUd
+        , "Middle Name": personMiddleName cRUd
+        , "Last Name": personLastName cRUd
+        , "Initials": personInitials cRUd
+        ]
+    , "Show": (I-personEditing) /\ personRef;personRef~ cRud BOX <FORM>
+        [ "Short name": personRef cRud
+        , "First Name": personFirstName cRud
+        , "Middle Name": personMiddleName cRud
+        , "Last Name": personLastName cRud
+        , "Initials": personInitials cRud
+        ]
+    , "Edit": personEditing /\ personRef;personRef~ cRud BOX <FORM>
+        [ "Short name": personRef cRUd
+        , "First Name": personFirstName cRUd
+        , "Middle Name": personMiddleName cRUd
+        , "Last Name": personLastName cRUd
+        , "Initials": personInitials cRUd
+        ]
+    , "Full name": I cRud BOX <FORM> [ "Full name": personFullName cRud ]
+    , "Specify personRef": I-personRef;personRef~ cRud BOX <FORM> [ "msg": TXT "Please specify the person's short name." ]
+    , "personRef not INJ": I /\ (personRef;-I;personRef~) cRud BOX <FORM> [ "msg": TXT "The person's short name isn't unique. Please specify only one.", "names": personRef cRUD ]
+    ]
+
+ENDCONTEXT

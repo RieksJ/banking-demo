@@ -1,0 +1,18 @@
+CONTEXT "DutchAddrAutofill" IN ENGLISH
+PURPOSE CONTEXT "DutchAddrAutofill"
+{+The DutchAddrAutofill context extends the DutchAddr context with a facility that
+automatically fills in parts of the DutchAddr when specific address items are given.
+Details for configuring and testing this feature are provided in the `README.md` file
++}
+
+INCLUDE "./DutchAddr.adl"
+
+daddrPostcodeErr   :: DutchAddr * DutchAddr [PROP] -- The (ZIPCode,StreetNr) combination does not exist
+ROLE ExecEngine MAINTAINS "Set Street and City given the ZIPCode and StreetNr"
+RULE "Set Street and City given the ZIPCode and StreetNr":
+   I-daddrPostcodeErr /\ daddrZIPCode;daddrZIPCode~ /\ daddrStreetNr;daddrStreetNr~
+   |- daddrStreet;daddrStreet~ /\ daddrCity;daddrCity~
+VIOLATION (TXT "{EX} postcodeSetAddrInfo;", SRC I, TXT ";", SRC daddrZIPCode, TXT ";", SRC daddrStreetNr) -- Vult Street, City, Municipality en Province in.
+
+-----------------------------------------------------------
+ENDCONTEXT

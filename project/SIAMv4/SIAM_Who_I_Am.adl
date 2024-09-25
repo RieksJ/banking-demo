@@ -1,0 +1,33 @@
+CONTEXT "Who_I_Am"
+{-The purpose of this file is to have a single place where attributes of the system can be defined so that whenever this module is used, it is easy to find which they are, and provide their values-}
+
+CONCEPT I_Am "Representation of the Actor that the system itself is"
+
+CLASSIFY I_Am ISA Actor
+
+RULE "There can only be one I_Am": V[I_Am] = I[I_Am]
+POPULATION I_Am CONTAINS [ "I_Am" ] -- This is what I_Am
+
+-- `myOwnName` is now: `I[I_Am];actorRef` (because `I_Am` is an Actor)
+-- `myOwningParty` is now: `I[I_Am];ownerRef`
+
+-- POPULATION actorRef   CONTAINS [ ("I_Am","ActorRef by which this system is referred") ]
+-- POPULATION ownerRef   CONTAINS [ ("I_Am","PartyRef (=name) of the system's owner") ]
+-- POPULATION myLogofile CONTAINS [ ("I_Am","Fileid of the file that contains a visual representation of the system") ]
+   myLogofile       :: I_Am * Fileid [INJ,UNI] -- File that contains a visual representation of this system
+   myIssuerURL      :: I_Am * URL    [INJ,UNI] -- (optional) URL of the service this system uses for issuing credentials
+   myVerifierURL    :: I_Am * URL    [INJ,UNI] -- (optional) URL of the service this system uses for verifying credentials
+   myHolderURL      :: I_Am * URL    [INJ,UNI] -- (optional) URL of the service this system uses for responding to presentation requests
+   myDIDPairRegURL  :: I_Am * URL    [INJ,UNI] -- (optional) URL of the service this system uses for handling DIDPair registration invitations
+   myAutoAccRegPref :: I_Am * I_Am   [PROP] -- Dit systeem staat het registreren van gebruikersaccounts toe
+
+-- Applications may extend the `I_Am` concepts to include other attributes
+
+VIEW "ActorAndOwner": Actor -- use this in an INTERFACE, e.g. as `"label": V;I_Am cRud <ActorAndOwner>`
+   { "actorRef": actorRef
+   , "TXT:(": TXT " ("
+   , "ownerRef": ownerRef[AorP*PartyRef]
+   , "TXT:)": TXT ")"
+   } ENDVIEW
+
+ENDCONTEXT

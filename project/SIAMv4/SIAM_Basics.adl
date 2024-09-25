@@ -1,0 +1,480 @@
+CONTEXT "Basics" IN ENGLISH
+PURPOSE CONTEXT "Basics"
+{+This context defines Parties, Actors, Accounts, Sessions and Roles.
+
+An `Actor` is an entity that is capable of acting (doing things).
+Typical subclasses are human beings, machines/robots, and (running) computer programs/apps.
+Their actions are not only guided by their own capabilities and intrinsic knowledge,
+but specifically also by knowledge of the Parties for whom they work.
+Such knowledge informs Actors what, when and how to act.
+Actors are relevant for SIAM because they would be the ones that login.
+
+Knowledge not only includes (observable) facts, but also opinions,
+e.g. regarding the Entities it knows to exist, relations between them, and rules,
+e.g. constraints and logic that are considered valid to be used for purposes of
+classifying things, (business) reasoning, and making decisions. There are many ways
+in which knowledge can be represented, e.g. in a persons mind, in documents, databases, etc.
+
+A `Party` is any Entity that has sovereign control over, and is linked 1-1 with a 'knowledge'.
+Typical subclasses are human beings, and organizations.
+Parties are NOT considered capable of acting. They need Actors to act on their behalf.
+Still, we can continue to use the commonly used form of speech in which a Party performs some Action,
+by realizing that this implies that there is (at least) one Actor that is actually executing that Action.
+Parties are relevant for SIAM because any agreements that SIAM needs to be aware of originate
+from a Party('s knowledge).
+
+Note that Persons are both a Party and an Actor. So when we say a Person acts, we are now
+capable of disinguishing between the following situations:
+- it acts on its own behalf,
+- it acts on behalf of some other Party,
+- another Actor acts on its behalf.
+
+A `SESSION` is the timeframe within which one Actor (the 'owner' of the session)
+communicates with another Actor (who has its own, different, session).
+Typically, client software (e.g. web browser) will start its session by sending
+a request for a web-service to server software (e.g. the IT system/web service).
+When a server (such as a running Ampersand application) receives such a request,
+it sets up a session (that it then owns) that corresponds 1-1 with the session owned by the client.
+At any point in time, a client can have multiple sessions with (different) servers,
+and a server can have multiple sessions with (different) clients.
+
+The context of a session is given by a its set of so-called session variables,
+i.e. the variables that inform the session owner about the `user`, i.e. the Actor
+that it is communicating with, and about other things that are particular to the
+communication with, and or the user itself.
+Examples include
+- `sessionActiveRoles`, which says which roles have been activated in a session;
+- `sessionAccount`, which identifies the Account with which a user has logged in.
+
+Note that the user is an Actor, and hence can be human or non-human (but not both).
+
+An Account is a registration of
+- attributes associated with 'users', i.e. human or non-human Actors
+  that can set up a communications channel with the web service
+  An example is 'accActorRef'
+- values for session-variables that specify the context within which
+  such users use that communications channel
+  An example is 'accAllowedRoles', 'accDefaultRoles'
+- authenticators, i.e. data values/objects that allow the web service
+  to ascertain that it is communicating with the intended/registerd Actor.
+  An example is 'accPassword', 'accAPIKey'.
+
+Logging in is the process where
+- a user identifies the Account to be used within a session (e.g. by specifying a username)
+- authenticates itself as the user associated with that account (e.g. by typing a password)
+- this account is subsequently associated with the session
+- the session context is established (i.e. appropriate roles are activated, etc.)
+
+With respect to roles, the following ideas apply:
+- An account can be assigned:
+  - `accAllowedRoles`, i.e. roles that can be activated in a session with that account.
+  - `accDefaultRoles`, i.e. roles that are by default activated in a session with that account.
+  and obviously, `accDefaultRoles` must be a subset of `accAllowedRoles`.
+  An account can NOT be assigned a `systemRole`, which by definition are roles that cannot be assigend to an account.
+- A session can be assigned any role; however:
+  - in a user session, i.e. a session that has a `sessionAccount`,
+    only those roles can be activated that are in `accAllowedRoles`.
+    Activated roles are in `sessionActiveRoles`.
+    In such a session, the default roles are specifed by `accDefaultRoles`
+  - in an anonymous session, i.e. a session where `sessionAccount` is not populated,
+    the role `Anonymous` is a session role (i.e. in `sessionActiveRoles`).
++}
+
+--[Parties and Actors]
+
+CONCEPT AorP "The class that contains all Actors and Parties"
+CLASSIFY Party, Actor ISA AorP -- We need this concept to satisfy type-checker constraints
+CLASSIFY PartyRef, ActorRef ISA IdentRef
+
+-- Note that `partyRef` and `actorRef` are **NOT** INJ because applications that use SIAM cannot 'undo' that constraint.
+-- **However**, file "SIAMv4_Module-example.adl" includes the [UNI]-rules for them by default (which can be commented out)
+partyRef  :: Party * PartyRef [UNI] MEANING "The human readable name/identifier that the application uses to refer to the Party"
+actorRef  :: Actor * ActorRef [UNI] MEANING "The human readable name/identifier that the application uses to refer to the Actor"
+
+--[Parties and Actors: Ownership]
+{-We define `ownership` as a relation between a Party (the `owner`) and some entity (the `owned`)
+that is characterized by the fact that the Party has 'sovereign control' over the owned, which means
+that in principle, this Party can safely dismiss/disregard any influences from other Parties.
+The relation with traditional (including legal) ownership is that the latter is defined
+(and subject) in a (legal) Jurisdiction, which provides certain assurances to owning parties
+regarding such sovereign control for as long as they remain in that Jurisdiction.
+The Party that owns an Actor (or another Party) may hence decide to let it act in any manner it sees fit.-}
+ownerRef  :: AorP  * PartyRef [UNI] MEANING "The human readable name/identifier of the Party that owns the Actor or Party"
+isOwnedBy :: AorP  * Party    [UNI] MEANING "The Party that owns (=completely controls) the Actor or Party"
+
+ROLE ExecEngine MAINTAINS "Setting default value for `ownerRef` (from specified owner)"
+RULE "Setting default value for `ownerRef` (from specified owner)":
+   (I[AorP]-ownerRef;ownerRef~);isOwnedBy;partyRef |- ownerRef
+VIOLATION (TXT "{EX} InsPair;ownerRef;Actor;", SRC I, TXT ";PartyRef;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Setting default value for `isOwnedBy` (from specified `ownerRef`)"
+RULE "Setting default value for `isOwnedBy` (from specified `ownerRef`)":
+   (I[AorP]-isOwnedBy;isOwnedBy~);ownerRef;(partyRef~ - partyRef~;-I) |- isOwnedBy
+VIOLATION (TXT "{EX} InsPair;isOwnedBy;AorP;", SRC I, TXT ";Party;", TGT I)
+
+--[Parties and Actors: Admin accounts]
+{- A Party, particularly if it isn't also an Actor, such as Organizations, need Actors to do things for them.
+However, not every Actor that works for a Party is allowed to execute arbitrary actions for that Party.
+Therefore, a Party should have at least one Account for an Actor that has the privileges
+for managing all Accounts associated with that Party: creating them, assinging roles, etc.
+-}
+-- The Account for such an Actor will have the property `accIsPartyAdmin`.
+accIsPartyAdmin  :: Account * Account [PROP] MEANING "Property: this Account may perform all account-related actions for accounts of the same Party."
+
+-- The Account(s) that can manage ALL accounts in the I_Am system is `accIsSysAdmin`.
+accIsSysAdmin :: Account * Account [PROP] MEANING "Property: in a session where this Account is activated, all account-related actions for the entire system are allowed."
+
+--[Parties and Actors: Employment]
+{- We define `employment` as a relation between a Party (the `employer`) and some AorP (the `employee`),
+that is characterized by the fact that either
+- the employer either owns the employee, and/or
+- an arrangement is expected to exist (outside the scope of SIAM) that specifies the rights and duties
+  of the employer and employee regarding how the employee works for the employer.
+Hence "I_Am" is an employee of the Party that owns the system.
+-}
+worksFor :: AorP * Party MEANING "The Actor that works for, or the Party that has employees that may work for, a particular Party"
+
+--[Parties and Actors: This System]
+{- the system of which SIAM becomes part is an Actor that is owned by some Party.
+Sometimes the system needs to know who that Party is, e.g. to show its logo on a webpage,
+or to distinguish between Actors that do and that do not work on its owners behalf.
+To this end, the concept `I_Am` is introduced, which ISA `Actor`.
+Details can be found in the file: "SIAM_Who_I_Am.adl".
+The idea is that an application's loader file statically populates the appropriate relations.-}
+
+VIEW AccountOfParty: Account
+{ "accIsNotPersonal": I - accActorRef;I[IdentRef];accPartyRef~
+, "accIsPartyAdmin": accIsPartyAdmin
+, "accIsSysAdmin": accIsSysAdmin
+, "accActorRef": accActorRef
+, "accPartyRef": accPartyRef
+} HTML TEMPLATE "View-AccountOfParty.html" ENDVIEW
+
+--[Accounts: basic attributes]-------------------------------------------------------------
+CLASSIFY  Userid ISA IdentRef
+accUserid   :: Account * Userid [INJ,UNI] MEANING "The name/identifier that the system uses to identify the Account itself."
+accPassword :: Account * Password   [UNI] MEANING "The password that a user must provide to authenticate (if U/PW authentication is used)." -- Note that this relation is not TOT, to allow U/PW authentication to be prohibited and other authentication methods used.
+accActorRef :: Account * ActorRef   [UNI] MEANING "The human readable identifier that refers to the Actor associated with the Account."
+accActor    :: Account * Actor      [UNI] MEANING "The (further details about the) Actor for which the Account exists."
+accPartyRef :: Account * PartyRef   [UNI] MEANING "The human readable identifier that refers to the Party on whose behalf the Actor operates."
+accParty    :: Account * Party      [UNI] MEANING "The (further details about the) Party on whose behalf the Actor works, and for whom this account exists."
+
+ROLE ExecEngine MAINTAINS "Active accounts that do not have an Actor nor an ActorRef will use the Userid for that"
+RULE "Active accounts that do not have an Actor nor an ActorRef will use the Userid for that":
+   (accIsActive /\ -(accActorRef;accActorRef~) /\ -(accActor;accActor~));accUserid;I[IdentRef] |- accActorRef
+VIOLATION (TXT "{EX} InsPair;accActorRef;Account;", SRC I, TXT ";ActorRef;", TGT I)
+
+ROLE ExecEngine MAINTAINS "The ActorRef of an Account that has an Actor, is its ActorRef"
+RULE "The ActorRef of an Account that has an Actor, is its ActorRef": accActor;actorRef |- accActorRef
+VIOLATION (TXT "{EX} InsPair;accActorRef;Account;", SRC I, TXT ";ActorRef;", TGT I[ActorRef])
+
+ROLE ExecEngine MAINTAINS "The Actor of an Account that has an ActorRef may be computable"
+RULE "The Actor of an Account that has an ActorRef may be computable":
+   accActorRef;(actorRef~ - (actorRef~;-I)) |- accActor -- Note: we should not assume that 'actorRef' is INJ
+VIOLATION (TXT "{EX} InsPair;accActor;Account;", SRC I, TXT ";Actor;", TGT I[Actor])
+
+ROLE ExecEngine MAINTAINS "The PartyRef of an Account that has an Party, is its PartyRef"
+RULE "The PartyRef of an Account that has an Party, is its PartyRef": accParty;partyRef |- accPartyRef
+VIOLATION (TXT "{EX} InsPair;accPartyRef;Account;", SRC I, TXT ";PartyRef;", TGT I[PartyRef])
+
+ROLE ExecEngine MAINTAINS "The Party of an Account that has an PartyRef may be computable"
+RULE "The Party of an Account that has an PartyRef may be computable":
+   accPartyRef;(partyRef~ - (partyRef~;-I)) |- accParty -- Note: we should not assume that 'PartyRef' is INJ
+VIOLATION (TXT "{EX} InsPair;accParty;Account;", SRC I, TXT ";Party;", TGT I[Party])
+
+--[Accounts: status attributes for logins]
+accIsInitialized :: Account * Account [PROP] MEANING "Property: the account fulfills the least number of registration requirements."
+accIsActive      :: Account * Account [PROP] MEANING "Property: the account may be used for logging in."
+accUserIfc       :: Account * NavToIfc [UNI] MEANING "The INTERFACE that the user is transferred to after a succesful login."
+accDeactivateReq :: Account * Account [PROP] MEANING "Property: a request exists for deactivating the account."
+
+ROLE ExecEngine MAINTAINS "A SystemAdmin account is always active"
+RULE "A SystemAdmin account is always active": accIsSysAdmin |- accIsActive
+VIOLATION (TXT "{EX} InsPair;accIsActive;Account;", SRC I, TXT ";Account;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Active user accounts are initialized"
+RULE "Active user accounts are initialized": accIsActive |- accIsInitialized
+VIOLATION (TXT "{EX} InsPair;accIsInitialized;Account;", SRC I, TXT ";Account;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Deny accDeactivateReq"
+RULE "Deny accDeactivateReq": accDeactivateReq |- accIsSysAdmin
+VIOLATION (TXT "{EX} DelPair;accDeactivateReq;Account;", SRC I, TXT ";Account;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Service accDeactivateReq"
+RULE "Service accDeactivateReq": accDeactivateReq-accIsSysAdmin |- sessionAccount~;sessionAccount
+VIOLATION (TXT "{EX} DelPair;accIsActive;Account;", SRC I, TXT ";Account;", TGT I
+          ,TXT "{EX} DelPair;accDeactivateReq;Account;", SRC I, TXT ";Account;", TGT I
+          )
+
+--[Roles: Account roles (Allowed roles and Default roles)]---------------------------------
+accIsGodAccount :: Account * Account [PROP] MEANING "Property: all non-system roles may be activated in a SESSION that has this Account as its `sessionAccount`."
+accAllowedRoles :: Account * Role MEANING "Roles that MAY be activated in a SESSION that has this Account as its `sessionAccount`"
+accDefaultRoles :: Account * Role MEANING "Roles that ARE activated in a SESSION that has this Account as its `sessionAccount`"
+
+ROLE ExecEngine MAINTAINS "Default roles must be allowed roles"
+RULE "Default roles must be allowed roles": accDefaultRoles |- accAllowedRoles
+VIOLATION (TXT "{EX} DelPair;accDefaultRoles;Account;", SRC I, TXT ";Role;", TGT I)
+
+--[Roles: System roles]--
+--Some roles exist for purposes that are internal to the system. It should not be possible for such roles to be assigned to Accounts, or activated in sessions. We have called such roles 'system roles' to contrast them with the roles that are available in so-called 'god accounts'.
+systemRole :: Role * Role [PROP] MEANING "Property: the Role is not allowed to be activated as a `sessionRole` for any Account (including 'god-accounts)."
+
+ROLE ExecEngine MAINTAINS "Accounts cannot have any of the system roles"
+RULE "Accounts cannot have any of the system roles": accAllowedRoles |- accAllowedRoles;(I[Role]-systemRole)
+VIOLATION (TXT "{EX} DelPair;accAllowedRoles;Account;", SRC I, TXT ";Role;", TGT I)
+
+POPULATION systemRole CONTAINS [ ("SYSTEM","SYSTEM") ]         -- Role is used in INTERFACEs that nobody should access
+POPULATION systemRole CONTAINS [ ("Anonymous","Anonymous") ]   -- Role is used in INTERFACEs for anonymous users
+POPULATION systemRole CONTAINS [ ("ExecEngine","ExecEngine") ] -- Default role for ExecEngine
+
+--[Roles: `User` and `Anonymous`]--
+
+POPULATION Role CONTAINS [ "User", "Anonymous" ]
+
+ROLE ExecEngine MAINTAINS "All active Accounts must have the role User"
+RULE "All active Accounts must have the role User" : accIsActive |- accAllowedRoles;"User";accDefaultRoles~
+VIOLATION (TXT "{EX}InsPair;accAllowedRoles;Account;", SRC I, TXT ";Role;User"
+          ,TXT "{EX}InsPair;accDefaultRoles;Account;", SRC I, TXT ";Role;User"
+          )
+
+--[Sessions: session variables]------------------------------------------------------------
+sessionIsAnon     :: SESSION * SESSION [PROP] MEANING "Property: the session does not have a session account (i.e., its user is anonymous)."
+sessionIsUser     :: SESSION * SESSION [PROP] MEANING "Property: the session has a session account (i.e., the user is known)."
+sessionIsSysAdmin :: SESSION * SESSION [PROP] MEANING "Property: the session is a user-session, and the session account is a SysAdmin account"
+
+ROLE ExecEngine MAINTAINS "Set property 'sessionIsAnon'"
+RULE "Set property 'sessionIsAnon'": I - sessionAccount;sessionAccount~ |- sessionIsAnon
+VIOLATION (TXT "{EX} InsPair;sessionIsAnon;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+ROLE ExecEngine MAINTAINS "Clear property 'sessionIsAnon'"
+RULE "Clear property 'sessionIsAnon'": sessionIsAnon |- I - sessionAccount;sessionAccount~
+VIOLATION (TXT "{EX} DelPair;sessionIsAnon;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Set property 'sessionIsUser'"
+RULE "Set property 'sessionIsUser'": I /\ sessionAccount;sessionAccount~ |- sessionIsUser
+VIOLATION (TXT "{EX} InsPair;sessionIsUser;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+ROLE ExecEngine MAINTAINS "Clear property 'sessionIsUser'"
+RULE "Clear property 'sessionIsUser'": sessionIsUser |- I /\ sessionAccount;sessionAccount~
+VIOLATION (TXT "{EX} DelPair;sessionIsUser;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Set property 'sessionIsSysAdmin'"
+RULE "Set property 'sessionIsSysAdmin'": sessionAccount;accIsSysAdmin |- sessionIsSysAdmin;sessionAccount
+VIOLATION (TXT "{EX} InsPair;sessionIsSysAdmin;SESSION;", SRC I, TXT ";SESSION;", SRC I)
+ROLE ExecEngine MAINTAINS "Clear property 'sessionIsSysAdmin'"
+RULE "Clear property 'sessionIsSysAdmin'": sessionIsSysAdmin |- sessionAccount;accIsSysAdmin;sessionAccount~
+VIOLATION (TXT "{EX} DelPair;sessionIsSysAdmin;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+
+sessionAccount  :: SESSION * Account  [UNI] MEANING "The Account that holds the default values for SESSION-variables."
+sessionUserid   :: SESSION * Userid   [UNI] MEANING "The name/identifier of the Account that has been used to login."
+sessionActorRef :: SESSION * ActorRef [UNI] MEANING "Human readable name that identifies the session's user."
+sessionActor    :: SESSION * Actor    [UNI] MEANING "Further details about the session's user."
+sessionPartyRef :: SESSION * PartyRef [UNI] MEANING "Human readable name that identifies the Party on whose behalf the Actor operates."
+sessionParty    :: SESSION * Party    [UNI] MEANING "Further details about the Party on whose behalf the `sessionActor` works."
+
+RULE "(Additional) (re)authentication must be for the same user account": sessionUserid;accUserid~ |- sessionAccount
+
+ROLE ExecEngine MAINTAINS "Throw away obsolete sessions" -- Fixes https://github.com/AmpersandTarski/RAP/issues/113
+RULE "Throw away obsolete sessions": "_SESSION";sessionAccount;sessionAccount~ |- I
+VIOLATION (TXT "{EX} DelAtom;SESSION;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Sessions with an inactive sessionaccount may not exist"
+RULE "Sessions with an inactive sessionaccount may not exist": sessionAccount |- sessionAccount;accIsActive
+-- VIOLATION (TXT "{EX} DelAtom;SESSION;", SRC I) -- i.e.: logout.
+VIOLATION (TXT "{EX} InsPair;sessionLogoutReq;SESSION;", SRC I, TXT ";SESSION;", SRC I)
+
+--$sessionUserid
+ROLE ExecEngine MAINTAINS "Determine the session's Userid"
+RULE "Determine the session's Userid": sessionAccount;accUserid |- sessionUserid
+VIOLATION (TXT "{EX} InsPair;sessionUserid;SESSION;", SRC I, TXT ";Userid;", TGT I)
+
+--$sessionActorRef (ActorRef)
+ROLE ExecEngine MAINTAINS "Determine the session's ActorRef (ActorRef)"
+RULE "Determine the session's ActorRef (ActorRef)": sessionAccount;accActorRef |- sessionActorRef
+VIOLATION (TXT "{EX} InsPair;sessionActorRef;SESSION;", SRC I, TXT ";ActorRef;", TGT I)
+
+--$sessionActor (Actor)
+ROLE ExecEngine MAINTAINS "Determine the session's User (Actor)"
+RULE "Determine the session's User (Actor)": sessionAccount;accActor |- sessionActor
+VIOLATION (TXT "{EX} InsPair;sessionActor;SESSION;", SRC I, TXT ";Actor;", TGT I)
+
+--$sessionPartyRef
+ROLE ExecEngine MAINTAINS "Determine the session's PartyRef"
+RULE "Determine the session's PartyRef": sessionAccount;accPartyRef |- sessionPartyRef
+VIOLATION (TXT "{EX} InsPair;sessionPartyRef;SESSION;", SRC I, TXT ";PartyRef;", TGT I)
+
+--$sessionParty
+ROLE ExecEngine MAINTAINS "Determine the session's Party"
+RULE "Determine the session's Party": sessionAccount;accParty |- sessionParty
+VIOLATION (TXT "{EX} InsPair;sessionParty;SESSION;", SRC I, TXT ";Party;", TGT I)
+
+--[Sessions: Auto Login requests]
+--Setting the property `accAutoLoginReq` asks the system to login with that account.
+accAutoLoginReq :: Account * Account [PROP] MEANING "Property: a request exists for (automatically) logging in with this account in anonymous sessions."
+
+ROLE ExecEngine MAINTAINS "Ignore accAutoLoginReq" -- ignore request if sesion is not anonymous, and/or account is not active
+RULE "Ignore accAutoLoginReq": accAutoLoginReq |- accIsActive /\ V;"_SESSION";sessionIsAnon;V
+VIOLATION (TXT "{EX} DelPair;accAutoLoginReq;Account;", SRC I, TXT ";Account;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Service accAutoLoginReq" -- Note that simultaneously setting the property on multiple accounts will only work for one account
+RULE "Service accAutoLoginReq": sessionIsAnon;V;(accAutoLoginReq /\ accIsActive) |- sessionIsUser;sessionAccount
+VIOLATION (TXT "{EX} InsPair;sessionAccount;SESSION;", SRC I, TXT ";Account;", TGT I
+          ,TXT "{EX} InsPair;sessionIsUser;SESSION;", SRC I, TXT ";SESSION;", SRC I
+          ,TXT "{EX} DelPair;sessionIsAnon;SESSION;", SRC I, TXT ";SESSION;", SRC I
+          ,TXT "{EX} DelPair;accAutoLoginReq;Account;", TGT I, TXT ";Account;", TGT I
+          ,TXT "{EX} SetNavToOnCommit;", SRC sessionUserIfc -- Setup for default user interface
+          ,TXT "{EX} SetNavToOnCommit;", TGT accUserIfc -- Override if Account has a specific setting
+          )
+
+--[Sessions: Assisted Login requests]--
+sessionLoginAssist :: SESSION * SESSION [PROP] MEANING "Property: 'LoginWithAssistance' interfaces are to provide a dropdown-box or other facilities that help users to pick an account to login with."
+ROLE ExecEngine MAINTAINS "Reset login help"
+RULE "Reset login help": sessionLoginAssist |- sessionIsAnon
+VIOLATION (TXT "{EX} DelPair;sessionLoginAssist;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+
+--[Session: Navigation after succesful login/logout]
+CONCEPT NavToIfc "Alphanumeric text that represents an INTERFACE" REPRESENT NavToIfc TYPE ALPHANUMERIC
+sessionIfcsSet :: SESSION * SESSION [PROP] MEANING "Property: the default interfaces for anonymous- and user-sessions have been set."
+sessionAnonIfc :: SESSION * NavToIfc [UNI] MEANING "The name of default interface for anonymous sessions."
+sessionUserIfc :: SESSION * NavToIfc [UNI] MEANING "The name of default interface for human and non-human user sessions."
+
+ROLE ExecEngine MAINTAINS "InsPair `sessionIfcsSet`"
+RULE "InsPair `sessionIfcsSet`": I /\ sessionAnonIfc;sessionAnonIfc~ /\ sessionUserIfc;sessionUserIfc~ |- sessionIfcsSet
+VIOLATION (TXT "{EX} InsPair;sessionIfcsSet;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+ROLE ExecEngine MAINTAINS "DelPair `sessionIfcsSet`"
+RULE "DelPair `sessionIfcsSet`": sessionIfcsSet |- I /\ sessionAnonIfc;sessionAnonIfc~ /\ sessionUserIfc;sessionUserIfc~
+VIOLATION (TXT "{EX} DelPair;sessionIfcsSet;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+
+--[Sessions: susupension/reactivation]
+sessionOrigAcc :: SESSION * Account [UNI] MEANING "The Account that was set as the `sessionAccount` in the first (succesful) login."
+
+ROLE ExecEngine MAINTAINS "Register sessionOrigAcc"
+RULE "Register sessionOrigAcc": ("_SESSION" - sessionOrigAcc;sessionOrigAcc~);sessionAccount |- sessionOrigAcc
+VIOLATION (TXT "{EX} InsPair;sessionOrigAcc;SESSION;", SRC I, TXT ";Account;", TGT I)
+
+RULE "Enforce session account integrity": ("_SESSION" /\ sessionOrigAcc;sessionOrigAcc~);sessionAccount |- sessionOrigAcc
+MESSAGE "You must login with the credentials of the original user"
+VIOLATION (TXT "User '", SRC sessionOrigAcc;accUserid, TXT "' was logged in.")
+
+--[Session: Logout]--
+sessionLogoutReq :: SESSION * SESSION [PROP] MEANING "Property: a request exists for logging out."
+ROLE ExecEngine MAINTAINS "Logout"
+RULE "Logout": "_SESSION";sessionLogoutReq |- -V
+MEANING "A request to logout in a session must be processed in that session."
+VIOLATION (TXT "{EX} SetNavToOnCommit;", SRC sessionAnonIfc -- Setup for default anonymous interface
+          ,TXT "{EX} DelAtom;SESSION;", SRC I
+          )
+
+--[Session: **Allowed** session roles]
+-- Allowed roles are roles that may be (de)activated in a session.
+-- For user sessions, these roles are specified by `accAllowedRoles` of the the sessionAccount.
+-- or, if the account has the `accIsGodAccount` property, then all non-system roles are allowed.
+sessionAllowedRoles :: SESSION * Role MEANING "The Roles that may be activated in the session."
+
+ROLE ExecEngine MAINTAINS "Set allowed session roles in User sessions"
+RULE "Set allowed session roles in User sessions":
+   sessionAccount;(accAllowedRoles \/ accIsGodAccount;V;(I[Role]-systemRole)) |- sessionAllowedRoles
+VIOLATION (TXT "{EX} InsPair;sessionAllowedRoles;SESSION;", SRC I, TXT ";Role;", TGT I[Role])
+
+ROLE ExecEngine MAINTAINS "Clear allowed session roles in User sessions"
+RULE "Clear allowed session roles in User sessions":
+   sessionIsUser;sessionAllowedRoles |- sessionAccount;(accAllowedRoles \/ accIsGodAccount;V;(I[Role]-systemRole))
+VIOLATION (TXT "{EX} DelPair;sessionAllowedRoles;SESSION;", SRC I, TXT ";Role;", TGT I[Role])
+
+--[Session: actually **Activated** session roles]
+-- Activated roles are roles that the system looks at/works with, e.g. to permit access to INTERFACEs.
+-- In a user session, the role 'User' is always active.
+-- Immediately after a succesful login of an Account, its `accDefaultRoles` are being activated in the session.
+-- Application-specific rules, as exemplified in file "SIAMv4_Module-example.adl", may further influence role activation in user sessions
+sessionActiveRoles :: SESSION * Role MEANING "The Roles that are activated in the session."
+
+ROLE ExecEngine MAINTAINS "Deactivate session roles that are not allowed session roles"
+RULE "Deactivate session roles that are not allowed session roles": sessionActiveRoles |- sessionAllowedRoles
+VIOLATION (TXT "{EX} DelPair;sessionActiveRoles;SESSION;", SRC I, TXT ";Role;", TGT I[Role])
+
+ROLE ExecEngine MAINTAINS "Activate default roles in a User session that has no active roles other than 'User'"
+RULE "Activate default roles in a User session that has no active roles other than 'User'":
+   (I-(sessionActiveRoles;(I-"User");sessionActiveRoles~));sessionAccount;accDefaultRoles |- sessionActiveRoles
+VIOLATION (TXT "{EX} InsPair;sessionActiveRoles;SESSION;", SRC I, TXT ";Role;", TGT I[Role])
+
+--[Sessions: Roles and anonymous sessions]--
+-- In an anonymous session, the role 'Anonymous' is always active.
+-- Application-specific rules may further influence role activation in anonymous sessions
+ROLE ExecEngine MAINTAINS "Activate role 'Anonymous' in a session that has no authenticated user"
+RULE "Activate role 'Anonymous' in a session that has no authenticated user":
+   sessionIsAnon |- sessionAllowedRoles;"Anonymous";sessionActiveRoles~
+VIOLATION (TXT "{EX} InsPair;sessionAllowedRoles;SESSION;", SRC I, TXT ";Role;Anonymous"
+          ,TXT "{EX} InsPair;sessionActiveRoles;SESSION;", SRC I, TXT ";Role;Anonymous"
+          )
+
+ROLE ExecEngine MAINTAINS "De-activate role 'Anonymous' in a session with an authenticated user"
+RULE "De-activate role 'Anonymous' in a session with an authenticated user":
+   sessionAllowedRoles;"Anonymous" |- sessionIsAnon;V[SESSION*Role]
+VIOLATION (TXT "{EX} DelPair;sessionAllowedRoles;SESSION;", SRC I, TXT ";Role;Anonymous") -- Other rules ensure that `sessionActiveRoles` is depopulated
+
+ROLE ExecEngine MAINTAINS "Anonymous Session Roles"
+RULE "Anonymous Session Roles": sessionIsAnon;sessionAllowedRoles |- V;"Anonymous"
+VIOLATION (TXT "{EX} DelPair;sessionAllowedRoles;SESSION;", SRC I, TXT ";Role;", TGT I)
+
+--[Glossary]--
+
+PURPOSE CONCEPT Account
+{+Als iemand inlogt in het systeem moet diens 'context' worden geactiveerd, d.w.z. de gegevens over de persoon die het systeem nodig heeft om te kunnen berekenen wat hij/zij wel en niet mag doen, en welke gegevens van het systeem daarbij mogen worden gebruikt. Om zulke computations te kunnen maken wordt een aantal zaken geregistreerd en aan één persoon gekoppeld.+}
+CONCEPT Account "een verzameling gegevens die (een deel van) de gebruikerscontext van één gebruiker binnen het systeem beschrijft"
+
+PURPOSE CONCEPT Userid
+{+De Userid van een account identificeert dat account. Het verwijst NIET (per se) naar de bijbehorende (menselijke of niet-menselijke) gebruiker, omdat dit afhangt van de zekerheid waarmee die kan worden geauthenticeerd.+}
+CONCEPT Userid "een rij karakters die een account identificeert binnen het systeem"
+REPRESENT Userid TYPE ALPHANUMERIC
+
+PURPOSE CONCEPT ActorRef
+{+De ActorRef van een account is een naam/identifier (IdentRef) die gebruikt wordt in interfaces (APIs in dit geval) om te verwijzen naar de menselijke gebruiker van het account, dan wel deze te identificeren (en later wellicht te authenticeren). Niet te verwarren met de Userid, die het account zelf identificeert.+}
+CONCEPT ActorRef "een rij karakters waarmee de menselijke gebruiker van het account wordt aangeduid"
+REPRESENT ActorRef TYPE ALPHANUMERIC
+
+PURPOSE CONCEPT Password
+{+Om het moeilijk te maken dat het Account van een zeker persoon door een ander wordt gebruikt, registreert het systeem wachtwoorden.
+Door een wachtwoord geheim te houden ontstaat enige mate van zekerheid dat het systeem gebruikt word door (dan wel met medeweten van) de persoon op wiens naam het wachtwoord is geregistreerd.+}
+CONCEPT Password "een rij karakters, die geheim gehouden kan worden door een persoon, en door die persoon gebruikt moet worden om toegang te krijgen tot het systeem"
+REPRESENT Password TYPE PASSWORD
+
+PURPOSE CONCEPT IdentRef
+{+Voor het kunnen identificeren van zekere entiteiten, d.w.z. het kunnen onderscheiden van een zekere entiteit van een aantal andere entiteiten, is het nodig dat er - binnen een zekere context, bijvoorbeeld die van de applicatie - een tekenreeks bestaat die de eigenschap heeft dat die aan niet meer dan 1 (een) entiteit is toegekend. Een tekenreeks die bedoeld is om deze eigenschap te bezitten (en waarop de applicatie ook toeziet dat die behouden blijft), noemen we een `IdentRef`.+}
+CONCEPT IdentRef "A human readable text that is used by the application to identify a particular entity"
+REPRESENT IdentRef TYPE ALPHANUMERIC
+
+PURPOSE CONCEPT Party
+{+We use the term 'Party' to refer to an entity that has, and maintains (updates) a Knowledge.
+There is a 1-1 relationship between Parties and Knowledge; they define one another as it were.
+The Knowledge is expected to include a meta-knowledge of itself.
+
+The typical subclasses of 'Party' are organizations (enterprises, governmental bodies etc.) and humans.
+Parties are NOT assumed to be able to act; they need Actors to that for them.
+This means that a Party can only exist if it has at least one Actor associated to it.
+Humans are not only Parties, but also Actors (when alive). Parties need people to work for them.+}
+CONCEPT Party "an entity that has, and maintains (updates) a Knowledge."
+CONCEPT PartyRef "a human readable (short) text that is used to refer to a Party."
+REPRESENT PartyRef TYPE ALPHANUMERIC
+
+PURPOSE CONCEPT Actor
+{+an entity that is capable of acting+}
+CONCEPT Actor "an entity that has the capability to act."
+CONCEPT ActorRef "a human readable (short) text that is used to refer to an Actor."
+REPRESENT ActorRef TYPE ALPHANUMERIC
+
+PURPOSE CONCEPT Role
+{+Niet iedereen mag alle gegevens uit een systeem inzien en/of wijzigen. Om de beheerslast te beperken die ontstaat als dit soort rechten per persoon wordt uitgegeven, gebruiken we het concept 'Role'. Een Role wordt enerzijds toegekend aan Accounts (en daarmee aan Personen) en anderzijds wordt hij gebruikt om gegevens in te zien en/of te wijzigen. Als een user inlogt worden de Rollen die aan hem zijn toegekend in de session geactiveerd (sessionrollen). Interfaces gebruiken deze sessionrollen om al dan niet gegevens te tonen en/of te editen.+}
+CONCEPT Role "de naam voor het mogen inzien en/of wijzigen van zekere gegevens, die kan worden toegekend aan accounts en in sessions kan worden geactiveerd"
+
+PURPOSE CONCEPT SESSION
+{+Een persoon gebruikt een gegevensruimte (en heet dan 'user') door met een browser (bijv. Chrome of Firefox) het systeem te benaderen dat de gegegensruimte beheert. Als meerdere personen een gegevensruimte delen, moet het systeem de context van elk van hen kunnen onderscheiden, bijvoorbeeld om:
+\begin{itemize}
+\item de interactie 'klein' te houden, d.w.z. alleen gegevens te laten zien die voor hem/haar relevant zijn;
+\item ervoor te zorgen dat een user niet ziet wat hij niet mag zien;
+\item te kunnen bijhouden welke persoon, of welk(e) organisatie(onderdeel) verantwoordelijk is voor een zekere transactie;
+\item automatisch gegevens betreffende de user of zijn context aan transacties toe te kunnen voegen
+\end{itemize}
+We gebruiken de term 'SESSION' of 'session' om de verzameling van gegevens betreffende één (actieve) user mee aan te geven. Deze term correspondeert met de gelijknamige term browsers gebruiken, nl. 'een verbinding (door de browser) met een webservice (die een URL heeft)'. Het systeem houdt één session bij voor elke actieve user, d.w.z. voor elke browser die het systeem benadert. Merk op dat dit in het bijzonder geldt als de user in verschillende tabbladen van dezelfde browser het systeem benadert - er is dan toch maar één session (en één user).
++}
+CONCEPT SESSION "een verzameling van gegevens die de context beschrijven waarin één persoon het systeem gebruikt"
+
+-----------------------------------------------------------
+ENDCONTEXT

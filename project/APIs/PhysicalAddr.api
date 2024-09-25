@@ -1,0 +1,65 @@
+CONTEXT "PhysicalAddr ALPHANUMERIC"
+
+INCLUDE "./CredMetaData.api"
+
+addrLine1 :: PhysicalAddr * AddrLine  [UNI] -- Usually street and number, or POBox and number
+addrLine2 :: PhysicalAddr * AddrLine  [UNI] -- e.g. an addition such as 3rd floor, room 14)
+addrLine3 :: PhysicalAddr * AddrLine  [UNI] -- e.g. zipcode, city (postal code + locality)
+addrLine4 :: PhysicalAddr * AddrLine  [UNI] -- e.g. region
+addrLine5 :: PhysicalAddr * AddrLine  [UNI] -- e.g. country
+addrLabel :: PhysicalAddr * AddrLabel [UNI]
+
+REPRESENT AddrLine TYPE ALPHANUMERIC
+REPRESENT AddrLabel TYPE BIGALPHANUMERIC
+
+--[Define an API for inputing the form/fields]
+addrCredMD :: PhysicalAddr * CredMetaData [INJ,UNI]
+
+--#IFNOT AutoCreateCredMetaDataAtom
+credMDIsPhysicalAddr :: CredMetaData * CredMetaData [PROP]
+ROLE ExecEngine MAINTAINS "InsAtom and InsPair addrCredMD"
+RULE "InsAtom and InsPair addrCredMD": I[PhysicalAddr] |- addrCredMD;addrCredMD~
+VIOLATION (TXT "{EX} InsAtom;CredMetaData"
+          ,TXT "{EX} InsPair;credMDIsPhysicalAddr;CredMetaData;_NEW;CredMetaData;_NEW"
+          ,TXT "{EX} InsPair;addrCredMD;PhysicalAddr;", SRC I, TXT ";CredMetaData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom and DelPair credMDIsPhysicalAddr"
+RULE "DelAtom and DelPair credMDIsPhysicalAddr": credMDIsPhysicalAddr |- addrCredMD~;addrCredMD
+VIOLATION (TXT "{EX} DelAtom;CredMetaData;", SRC I)
+--#ENDIF
+
+VIEW PhysicalAddrCredInlezen: PhysicalAddr
+{ "formAtom"       : I                      -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "PhysicalAddrData" -- API through which credential data is read/issued
+, "credentialType" : TXT "PhysicalAddr"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"     -- API through which credential MetaData is read
+, "credmdAtom"     : addrCredMD             -- Atom where MetaData is read
+, "buttonText"     : TXT "Fysiek adres inlezen"
+} HTML TEMPLATE "View-CredentialVerifyRequest.html" ENDVIEW
+
+VIEW PhysicalAddrCredUitgeven : PhysicalAddr
+{ "formAtom"       : I                      -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "PhysicalAddrData" -- API through which credential data is read/issued
+, "credentialType" : TXT "PhysicalAddr"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"     -- API through which credential MetaData is read
+, "credmdAtom"     : addrCredMD             -- Atom where MetaData is read
+, "buttonText"     : TXT "PhysicalAddr credential"
+} HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+API "PhysicalAddrData": I[PhysicalAddr] CRud BOX
+  [ "addrLine1": addrLine1 cRUd
+  , "addrLine2": addrLine2 cRUd
+  , "addrLine3": addrLine3 cRUd
+  , "addrLine4": addrLine4 cRUd
+  , "addrLine5": addrLine5 cRUd
+-- voor Nederlandse toepassingen:
+  , "adresregel1": addrLine1 cRUd
+  , "adresregel2": addrLine2 cRUd
+  , "adresregel3": addrLine3 cRUd
+  , "adresregel4": addrLine4 cRUd
+  , "adresregel5": addrLine5 cRUd
+--
+  , "addrLabel": addrLabel cRUd
+  ]
+
+ENDCONTEXT

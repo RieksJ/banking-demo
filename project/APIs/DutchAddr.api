@@ -1,0 +1,97 @@
+CONTEXT "DutchAddr API" IN ENGLISH
+
+CLASSIFY DutchAddr ISA PhysicalAddr
+INCLUDE "./CredMetaData.api"
+INCLUDE "./APIs/PhysicalAddr.api"
+INCLUDE "./PhysicalAddr/DutchAddr.adl"
+
+daddrID            :: DutchAddr * DutchAddrID [INJ,UNI]  -- ID van het kadaster voor individuele adressen
+daddrStreet        :: DutchAddr * Street        [UNI]  -- (GBA:Straatnaam) Hiddemaheerd (or 'Postbus', 'Antwoordnummer')
+daddrStreetNr      :: DutchAddr * StreetNr      [UNI]  -- (GBA:Huisnummer) 113 (=huisnummer)
+daddrStrNrLetter   :: DutchAddr * StrNrLetter   [UNI]  -- (GBA:Huisletter) a (=huisletter)
+daddrStrNrAddition :: DutchAddr * StrNrAddition [UNI]  -- (GBA:Huisnummertoevoeging) 7 (=huisnummertoevoeging)
+daddrStrAddition   :: DutchAddr * AddrLine      [UNI]  -- bijvoorbeeld: 3e verdieping, kamer 314
+daddrZIPCode       :: DutchAddr * ZIPCode       [UNI]  -- (GBA:Postcode) 9737KX
+daddrCity          :: DutchAddr * City          [UNI]  -- (GBA:Woonplaatsnaam) Roden (=plaats)
+daddrMunicipality  :: DutchAddr * Municipality  [UNI]  -- Noordenveld (=gemeente)
+daddrProvince      :: DutchAddr * Province      [UNI]  -- Drenthe (=provincie)
+
+REPRESENT DutchAddrID, Street, StreetNr, StrNrLetter, StrNrAddition TYPE ALPHANUMERIC
+REPRESENT ZIPCode, City, Municipality, Province TYPE ALPHANUMERIC
+
+--[Define an API for inputing the form/fields]
+daddrCredMD :: DutchAddr * CredMetaData [INJ,UNI]
+
+--#IFNOT AutoCreateCredMetaDataAtom
+credMDIsDutchAddr :: CredMetaData * CredMetaData [PROP]
+ROLE ExecEngine MAINTAINS "InsAtom and InsPair daddrCredMD"
+RULE "InsAtom and InsPair daddrCredMD": I[DutchAddr] |- daddrCredMD;daddrCredMD~
+VIOLATION (TXT "{EX} InsAtom;CredMetaData"
+          ,TXT "{EX} InsPair;credMDIsDutchAddr;CredMetaData;_NEW;CredMetaData;_NEW"
+          ,TXT "{EX} InsPair;daddrCredMD;DutchAddr;", SRC I, TXT ";CredMetaData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom and DelPair credMDIsDutchAddr"
+RULE "DelAtom and DelPair credMDIsDutchAddr": credMDIsDutchAddr |- daddrCredMD~;daddrCredMD
+VIOLATION (TXT "{EX} DelAtom;CredMetaData;", SRC I)
+--#ENDIF
+
+VIEW DutchAddrCredInlezen: DutchAddr
+{ "formAtom"       : I                     -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "DutchAddrData"   -- API through which credential data is read/issued
+, "credentialType" : TXT "DutchAddr"       -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"    -- API through which credential MetaData is read
+, "credmdAtom"     : daddrCredMD           -- Atom where MetaData is read
+, "buttonText"     : TXT "NL adres inlezen"
+} HTML TEMPLATE "View-CredentialVerifyRequest.html" ENDVIEW
+
+VIEW DutchAddrCredUitgeven : DutchAddr
+{ "formAtom"       : I                     -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "DutchAddrData"   -- API through which credential data is read/issued
+, "credentialType" : TXT "DutchAddr"       -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"    -- API through which credential MetaData is read
+, "credmdAtom"     : daddrCredMD           -- Atom where MetaData is read
+, "buttonText"     : TXT "NL adres uitgeven"
+} HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+API "DutchAddrData": I[DutchAddr] CRud BOX
+   [ "id": daddrID cRUd                                -- ID van het kadaster voor individuele adressen
+   , "straatnaam": daddrStreet cRUd                    -- Hiddemaheerd
+   , "huisnummer": daddrStreetNr cRUd                  -- 113 (=huisnummer)
+   , "huisletter": daddrStrNrLetter cRUd               -- a (=huisletter)
+   , "huisnummertoevoeging": daddrStrNrAddition cRUd   -- 7 (=huisnummertoevoeging)
+   , "toevoeging": daddrStrAddition cRUd               -- bijvoorbeeld: 3e verdieping, kamer 314 (=AddrLine)
+   , "postcode": daddrZIPCode cRUd                     -- 9737KX
+   , "plaats": daddrCity cRUd                          -- Roden (=plaats)
+   , "gemeente": daddrMunicipality cRUd                -- Noordenveld (=gemeente)
+   , "provincie": daddrProvince cRUd                   -- Drenthe (=provincie)
+-- Een DutchAddr ISA PhysicalAddr; en het kan zijn dat alleen DIE is gespecificiceerd. Vandaar dus:
+   , "adresregel1": addrLine1 cRUd -- Usually street and number, or POBox and number
+   , "adresregel2": addrLine2 cRUd -- e.g. an addition such as 3rd floor, room 14)
+   , "adresregel3": addrLine3 cRUd -- e.g. zipcode, city (postal code + locality)
+   , "adresregel4": addrLine4 cRUd -- e.g. region
+   , "adresregel5": addrLine5 cRUd -- e.g. country
+   , "adreslabel": addrLabel cRUd
+   ]
+
+ENDCONTEXT
+
+zie ook: https://github.com/openaddresses/openaddresses/blob/master/sources/nl/countrywide.json
+   "conform": {
+      "format": "csv",
+      "csvsplit": ";",
+      "lon": "lon",
+      "lat": "lat",
+      "number": {
+         "function": "format",
+         "fields": [
+               "huisnummer",
+               "huisletter",
+               "huisnummertoevoeging"
+         ],
+         "format": "$1$2-$3"
+      },
+      "street": "openbareruimte",
+      "postcode": "postcode",
+      "city": "woonplaats",
+      "region": "provincie"
+   }

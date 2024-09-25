@@ -1,3 +1,4 @@
-CONTEXT "Banking Demo" IN ENGLISH
-INCLUDE "example.adl"
+CONTEXT "Banking Demo" IN ENGLISH 
+INCLUDE ".bank.adl" 
+--INCLUDE "z-bug.adl"
 ENDCONTEXT

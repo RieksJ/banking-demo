@@ -1,0 +1,58 @@
+CONTEXT "Person Attributes" IN ENGLISH
+-- We define the attributes (and interfaces) separately so that applications can do their own things with them.
+
+INCLUDE "./SIAM_Persons.adl"
+
+--[Generic Person attributes]
+REPRESENT FirstName, MiddleName, LastName, Initials, PersonFullName TYPE ALPHANUMERIC
+CLASSIFY PersonFullName ISA PersonRef
+
+personFirstName  :: Person * FirstName  [UNI] MEANING "A text that represents the person's first name"
+personMiddleName :: Person * MiddleName [UNI] MEANING "A text that represents the person's middle name"
+personLastName   :: Person * LastName   [UNI] MEANING "A text that represents the person's last name"
+personInitials   :: Person * Initials   [UNI] MEANING "A text that represents the person's initials"
+
+--[A Person's full name]
+personFullName   :: Person * PersonFullName [UNI] MEANING "A text that represents the person's full name" -- computed to be the concatenation of First, Middle and Last names or the personRef
+
+IDENT SIAMPersonRefComputations: SIAMPersonRefComputation(siamCompFirstName,siamCompMiddleName,siamCompLastName)
+siamCompPerson     :: SIAMPersonRefComputation * Person          [UNI]
+siamCompFirstName  :: SIAMPersonRefComputation * FirstName       [UNI]
+siamCompMiddleName :: SIAMPersonRefComputation * MiddleName      [UNI]
+siamCompLastName   :: SIAMPersonRefComputation * LastName        [UNI]
+siamCompResult     :: SIAMPersonRefComputation * PersonFullName  [UNI]
+
+ROLE ExecEngine MAINTAINS "Auto create SIAMPersonRefComputation"
+RULE "Auto create SIAMPersonRefComputation":
+    I /\ personFirstName;V;personLastName~
+ |- siamCompPerson~;(I/\siamCompResult;siamCompResult~);siamCompPerson
+VIOLATION (TXT "{EX} InsAtom;SIAMPersonRefComputation"
+            ,TXT "{EX} InsPair;siamCompPerson;SIAMPersonRefComputation;_NEW;Person;", SRC I
+            ,TXT "{EX} InsPair;siamCompFirstName;SIAMPersonRefComputation;_NEW;FirstName;", TGT personFirstName
+            ,TXT "{EX} InsPair;siamCompMiddleName;SIAMPersonRefComputation;_NEW;MiddleName;", TGT personMiddleName
+            ,TXT "{EX} InsPair;siamCompLastName;SIAMPersonRefComputation;_NEW;LastName;", TGT personLastName
+            ,TXT "{EX} InsPair;siamCompResult;SIAMPersonRefComputation;_NEW;PersonFullName;"
+                       , SRC personFirstName, TXT " ", SRC personLastName
+                                -- ,TXT "{php} preg_replace('\\s*(_NULL)?\\s*',' ','"
+                                --              , SRC personFirstName,  TXT " "
+                                --              , SRC personMiddleName, TXT " "
+                                --              , SRC personLastName, TXT "')"
+          )
+ROLE ExecEngine MAINTAINS "Auto delete SIAMPersonRefComputation"
+RULE "Auto delete SIAMPersonRefComputation": I[SIAMPersonRefComputation]
+|-  (  siamCompFirstName;personFirstName~    -- or the FirstName is updated or removed,
+    /\ siamCompMiddleName<>personMiddleName~ -- or the Middlename is updated,
+    /\ siamCompLastName;personLastName~      -- or the LastName is updated or removed.
+    );siamCompPerson~                        -- so we delete the computation when the person no longer exists,
+VIOLATION (TXT "{EX} DelAtom;SIAMPersonRefComputation;", SRC I)  -- Then, a new computation may be created...
+
+ROLE ExecEngine MAINTAINS "Assign personFullName"
+RULE "Assign personFullName": siamCompPerson~;siamCompResult |- personFullName
+VIOLATION (TXT "{EX} InsPair;personFullName;Person;", SRC I, TXT ";PersonFullName;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Default InsPair personRef from personFullName"
+RULE "Default InsPair personRef from personFullName":
+    (I - personRef;personRef~);personFullName |- personRef[Person*PersonRef]
+VIOLATION (TXT "{EX} InsPair;personRef;Person;", SRC I, TXT ";PersonRef;", TGT I[PersonRef])
+
+ENDCONTEXT

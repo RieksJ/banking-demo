@@ -1,0 +1,69 @@
+CONTEXT "OverlijdenData API"
+
+INCLUDE "./CredMetaData.api"
+INCLUDE "./NatuurlijkPersoon.api"
+INCLUDE "./DutchAddr.api"
+
+CONCEPT OverlijdenData "Gegevens betreffende een overlijdensgebeurtenis"
+ovlNP        :: OverlijdenData * NatuurlijkPersoon [UNI] -- De (conceptgegevens over de) NP die is overleden.
+ovlDutchAddr :: OverlijdenData * DutchAddr         [UNI] -- Adres waar de overledene heeft gewoond.
+ovlDatum     :: OverlijdenData * Datum             [UNI] -- Datum waarop het overlijden heeft plaatsgevonden
+ovlPlaats    :: OverlijdenData * City              [UNI] -- Plaats waar het overlijden heeft plaatsgevonden
+ovlGemeente  :: OverlijdenData * Municipality      [UNI] -- Gemeente waarbinnen het overlijden heeft plaatsgevonden en is geregistreerd
+
+REPRESENT VfdID, AttType, URL, SummaryText TYPE BIGALPHANUMERIC
+REPRESENT Datum TYPE DATE
+REPRESENT City, Municipality TYPE ALPHANUMERIC
+
+--[Define an API for inputing the form/fields]
+ovlCredMD :: OverlijdenData * CredMetaData [INJ,UNI]
+
+--#IFNOT AutoCreateCredMetaDataAtom
+credMDIsOverlijden :: CredMetaData * CredMetaData [PROP]
+ROLE ExecEngine MAINTAINS "InsAtom and InsPair ovlCredMD"
+RULE "InsAtom and InsPair ovlCredMD": I[OverlijdenData] |- ovlCredMD;ovlCredMD~
+VIOLATION (TXT "{EX} InsAtom;CredMetaData"
+          ,TXT "{EX} InsPair;credMDIsOverlijden;CredMetaData;_NEW;CredMetaData;_NEW"
+          ,TXT "{EX} InsPair;ovlCredMD;OverlijdenData;", SRC I, TXT ";CredMetaData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom and DelPair credMDIsOverlijden"
+RULE "DelAtom and DelPair credMDIsOverlijden": credMDIsOverlijden |- ovlCredMD~;ovlCredMD
+VIOLATION (TXT "{EX} DelAtom;CredMetaData;", SRC I)
+--#ENDIF
+
+VIEW OverlijdenCredInlezen: OverlijdenData
+{ "formAtom"       : I                    -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "OverlijdenData" -- API through which credential data is read/issued
+, "credentialType" : TXT "Overlijden"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"   -- API through which credential MetaData is read
+, "credmdAtom"     : ovlCredMD            -- Atom where MetaData is read
+, "buttonText"     : TXT "Overlijdensgegevens inlezen"
+} HTML TEMPLATE "View-CredentialVerifyRequest.html" ENDVIEW
+
+VIEW OverlijdenCredUitgeven : OverlijdenData
+{ "formAtom"       : I                    -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "OverlijdenData" -- API through which credential data is read/issued
+, "credentialType" : TXT "Overlijden"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"   -- API through which credential MetaData is read
+, "credmdAtom"     : ovlCredMD            -- Atom where MetaData is read
+, "buttonText"     : TXT "Overlijdensgegevens credential"
+} HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+API "OverlijdenData": I[OverlijdenData] CRud BOX
+    [ "overledene": ovlNP API "NatuurlijkPersoonData"
+    , "laatsteWoonadres": ovlDutchAddr API "DutchAddrData"
+    , "overlijdensdatum": ovlDatum cRUd
+    , "overlijdensplaats": ovlPlaats cRUd
+    , "overlijdensgemeente": ovlGemeente cRUd
+    ]
+
+--[VIEWs en INTERFACEs voor het inzien van OverlijdenData]
+VIEW "OverlijdenPlaatsTijd": OverlijdenData
+{ "gebeurtenis": TXT "Het overlijden heeft op "
+, "datum": ovlDatum
+, "plaastgevonden": TXT " plaatsgevonden te "
+, "plaats": ovlPlaats
+, ".": TXT "."
+} ENDVIEW
+
+ENDCONTEXT

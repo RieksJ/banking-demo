@@ -1,0 +1,196 @@
+CONTEXT "Mandateren"
+{- Het onderwerp 'mandateren' is belangrijk binnen de overheid en het bedrijfsleven, en dan vooral in een juridische context.
+   Hoewel het basis-idee conceptueel zeer eenvoudig is, zijn er nogal wat wetsartikelen die voorwaarden stellen aan mandaten in verschillende situaties.
+   Dat geeft de KvK (en andere partyen) de gelegenheid om waarde toe te voegen, bijvoorbeeld door de rechtsgeldigheid van zekere mandaten te attesteren.
+
+   We hebben ons bij het modeleren laten inspireren door
+   - de Algemene Wet Bestuursrecht (Awb - https://wetten.overheid.nl/BWBR0005537);
+   - Wikipedia (https://nl.wikipedia.org/wiki/Mandaat).
+
+   Hieronder staat een aantal uitspraken die wij vinden dat waar zouden moeten zijn (met een verwijzing naar het wetsartikel dat de inspiratie hiervoor aanleverde):
+   - "Een door de gemandateerde binnen de grenzen van zijn bevoegdheid genomen besluit geldt als een besluit van de mandaatgever" (vgl Art 10:2 Awb)
+   - "Indien de gemandateerde niet werkzaam is onder verantwoordelijkheid van de mandaatgever,
+      behoeft de mandaatverlening de instemming van de gemandateerde
+      en in het voorkomende geval van degene onder wiens verantwoordelijkheid hij werkt." (vgl Art 10:4 Awb)
+   - "Een Mandaat kan zowel van algemene aard zijn of een specifiek geval betreffen." (vgl Art 10:5 Awb)
+
+   Niet alleen de mandaatgever en de gemandateerde moeten een mandaat kunnen terugvinden, maar ook derde partyen,
+   zodat die erop kunnen vertrouwen dat een gemandateerde in zekere gevallen daadwerkelijk handelt names de mandaatgever.
+   Een mogelijkheid is dat de mandaatgever een (mandaat)register aanlegt dat
+   - rechtstreeks door derde partyen geraadpleegd kan worden;
+   - gebruikt wordt om mandaat-attestaties mee uit te geven aan gemandateerden.
+   Op internet zijn veel voorbeelden van mandaatregisters te vinden,
+   bijvoorbeeld http://decentrale.regelgeving.overheid.nl/cvdr/xhtmloutput/actueel/Utrecht%20(Utr)/CVDR621501.html
+
+   P.S.:
+   - Mandaat:  bevoegdheid van een Party (gemandateerde) tot het uitvoeren van (een) zeker(e) soort(en) handeling(en)
+               namens een andere Party (mandaatgever). De verantwoordelijkheid voor het handelen blijf berusten bij de mandaatgever.
+   - in de dagelijkse praktijk wordt een aantal termen, die juridisch heel specifiek en onderscheiden zijn,
+     toch als synoniemen van elkaar gezien, zoals: `mandaat`, `machtiging`, `volmacht`, `uitvoering`, `opdracht`.
+   - Delegaat: verantwoordelijkheid, toegekend c.q. opgedragen aan een Party, voor het onder eigen verantwoordelijkheid
+               uitvoeren van (een) zeker(e) soort(en) handeling(en).
+   We houden ons hier niet bezig met delegeren.
+
+   **Het gaat hier over functionele mandaten (d.w.z. waarbij een FUnctie wordt gemandateerd**
+   **Voor een technische implementatie zijn technische mandaten nodig (d.w.z. Accounts die bepaalde dingen mogen)**
+-}
+
+INCLUDE "./Generic_Mandateren_testpop.xlsx" -- default populatie om mee te testen
+
+CONCEPT "Party" "natuurlijk persoon, rechtspersoon of bestuursorgaan" -- wordt gesuggereerd in Awb.
+CONCEPT "Functie" "groep van actoren binnen 1 Party"
+
+IDENT Functies: Functie(funcParty,funcRef)
+funcParty :: Functie * Party  [UNI,TOT] -- Party door wie de functie in het leven is geroepen
+funcRef   :: Functie * FuncRef [UNI,TOT] -- Naam die de Functie binnen diens funcParty identificeert
+funcAorP  :: Functie * AorP              -- Actor(en) en/of Parijen die de Functie binnen de Party bekleden
+
+--[Mandaten]
+CONCEPT "Mandaat" "bevoegdheid om in naam en onder verantwoordelijkheid van een ander, een zeker(e) (soort) handeling(en) uit te voeren"
+
+mdtType            :: Mandaat * MandaatType [UNI] -- Soort mandaat; dit impliceert de bijbehorende governance
+mdtMandaatgever    :: Mandaat * Party [UNI,TOT]   -- Party die deze bevoegdheden heeft verleend, of: Party in wiens Mandaatregister dit mandaat zit
+mdtHandelingen     :: Mandaat * HSpec [TOT]       -- Specificatie van het soort handeling(en) waarvoor de bevoegdheid is verleend
+mdtMandaatgrond    :: Mandaat * Mandaatgrond      -- Rechtvaardiging voor het bestaan van het mandaat, zoals een wetstekst, of een (doormandateerbaar) mandaat
+mdtGemandateerde   :: Mandaat * Functie [UNI]     -- Actor(en) aan wie zekere bevoegdheden zijn verleend
+mdtIsDelegaat      :: Mandaat * Mandaat [PROP]    -- Mandaat is gedelegeerd, dus verantwoordelijkheid gaat ook over op gemaandateerde
+mdtIsMandateerbaar :: Mandaat * Mandaat [PROP]    -- Ondermandateren (doormandateren) van het mandaat is toegestaan
+mdtBeginDatum      :: Mandaat * Datum [UNI,TOT]   -- Eerste dag waarop de bevoegdheid geldig is
+mdtEindDatum       :: Mandaat * Datum [UNI]       -- Laatste dag waarop de bevoegdheid geldig is
+
+RULE "Elk Mandaat moet een Gemandateerde hebben": I[Mandaat] |- mdtIsEenDoorMandaat \/ mdtGemandateerde;mdtGemandateerde~
+RULE "Elk Delegaat moet zich beperken tot een Functie die door niet meer dan 1 Party wordt vervuld": -- anders weet je niet meer wie accountable is
+   funcAorP~;mdtGemandateerde~;mdtIsDelegaat;mdtGemandateerde;funcAorP |- I[Party]
+
+CLASSIFY Mandaat ISA Mandaatgrond
+RULE "Als een Mandaat de Mandaatgrond van een Mandaat is, dan moet deze doormandateerbaar zijn":
+   mdtMandaatgrond;I[Mandaat] |- mdtMandaatgrond;mdtIsMandateerbaar
+
+REPRESENT Datum TYPE DATE
+ROLE ExecEngine MAINTAINS "Initialize BeginDatum to NOW"
+RULE "Initialize BeginDatum to NOW": I[Mandaat] |- mdtBeginDatum;mdtBeginDatum~
+VIOLATION (TXT "{EX} InsPair;mdtBeginDatum;Mandaat;", SRC I, TXT ";Datum;{php}date(DATE_ISO8601)")
+
+--[Handeling Specificaties]
+CONCEPT "HSpec" "specificatie van handelingen, inclusief de versie, de governance autoriteit, evt. (juridische) geldigheidsvoorwaarden e.d."
+PURPOSE CONCEPT "HSpec"
+{+Een Party die handelingen wil kunnen mandateren, moet deze zodanig beschreven hebben dat andere Partyen weten wat het mandaat precies inhoudt.+}
+
+IDENT HSpecs: HSpec(hspecAuteur,hspecRef)
+hspecAuteur       :: HSpec * Party [UNI,TOT] -- HSpec maakt deel uit van het Mandaatregister van de gespecificeerde Party
+hspecRef          :: HSpec * HSpecRef [INJ,TOT] -- verwijzing waarmee deze HSpec eenduidig kan worden geidentificeerd
+hspecSpecificatie :: HSpec * Specificatie [UNI,TOT] -- tekstuele specificatie van de handeling(en)
+hspecVoorwaarde   :: HSpec * Voorwaarde -- Voorwaarden voor het geldig uiteofenen van handelingen van dit soort
+hspecAanwijzing   :: HSpec * Aanwijzing -- Verdere aanwijzingen/inlichtingen voor het uitoefenen van dit soort handelingen
+hspecNote         :: HSpec * Notitie    -- ruimte om allerlei andere dingen op te schrijven
+hspecISAHSpec     :: HSpec * HSpec      -- SRC HSpec is een specialisatie van TGT HSpec (en erft dus de Specificatie, Voorwaarde en Aanwijzigingen)
+--**Specificatie, Voorwaarde en Aanwijzing kunnen m.b.v. `TText` worden geregeld.
+
+REPRESENT HSpecRef TYPE ALPHANUMERIC
+REPRESENT Specificatie, Voorwaarde, Aanwijzing, Notitie TYPE BIGALPHANUMERIC
+
+--[Doormandateren]
+mdtDoormandateerReq :: Mandaat * Mandaat [PROP]
+mdtIsDoorgemandateerdNaar :: Mandaat * Mandaat [IRF,ASY] -- SRC Mandaat is doorgemandateerd naar TGT Mandaat
+mdtIsEenDoorMandaat :: Mandaat * Mandaat [PROP] -- Eigenschap van elk Mandaat dat het resultaat is van een doormandatering.
+
+ROLE ExecEngine MAINTAINS "Decline `mdtDoormandateerReq`"
+RULE "Decline `mdtDoormandateerReq`": mdtDoormandateerReq |- mdtIsMandateerbaar
+VIOLATION (TXT "{EX} DelPair;mdtDoormandateerReq;Mandaat;", SRC I, TXT ";Mandaat;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Service `mdtDoormandateerReq`"
+RULE "Service `mdtDoormandateerReq`": mdtDoormandateerReq /\ mdtIsMandateerbaar |- -V
+VIOLATION (TXT "{EX} InsAtom;Mandaat"
+          ,TXT "{EX} InsPair;mdtMandaatgever;Mandaat;_NEW;Party;", SRC mdtGemandateerde
+          ,TXT "{EX} InsPair;mdtHandelingen;Mandaat;_NEW;HSpec;", SRC mdtHandelingen
+          ,TXT "{EX} InsPair;mdtBeginDatum;Mandaat;_NEW;Datum;{php}date(DATE_ISO8601)"
+          ,TXT "{EX} InsPair;mdtIsDoorgemandateerdNaar;Mandaat;", SRC I, TXT ";Mandaat;_NEW"
+          ,TXT "{EX} InsPair;mdtIsEenDoorMandaat;Mandaat;_NEW;Mandaat;_NEW"
+          ,TXT "{EX} DelPair;mdtDoormandateerReq;Mandaat;", SRC I, TXT ";Mandaat;", TGT I
+          ,TXT "{EX} SetNavToOnCommit;/Mandaat/_NEW"
+          )
+
+ROLE ExecEngine MAINTAINS "Clean up doormandaat"
+RULE "Clean up doormandaat": mdtIsEenDoorMandaat |- mdtIsDoorgemandateerdNaar~;mdtIsMandateerbaar;mdtIsDoorgemandateerdNaar
+VIOLATION (TXT "{EX} DelAtom;Mandaat;", SRC I)
+
+--[INTERFACES]
+VIEW HSpec: HSpec { "ref":hspecRef } ENDVIEW
+
+sessionParty :: SESSION * Party [UNI] -- de Party namens wie we in de sessie zitten.
+
+INTERFACE "Mandaatregister": I[SESSION] cRud BOX
+   [ "Eigenaar": I cRud BOX <OBJECTDROPDOWN>
+      [ selectfrom: V[SESSION*Party] cRud
+      , setrelation: sessionParty cRUd
+      , instruction: TXT "Selecteer party"
+      ]
+   , "Eigen Mandaatregister": sessionParty cRud BOX <TABS>
+      [ Handelingen: hspecAuteur~ cRuD BOX <TABLE sortable hideOnNoRecords>
+         [ "Referentie": hspecRef cRud
+         , "Specialisatie van": hspecISAHSpec cRud
+         , "Specificatie": hspecSpecificatie cRud
+         , "Voorwaarden": hspecVoorwaarde cRud
+         , "Aanwijzingen": hspecAanwijzing cRud
+         ]
+      , "Uitgegeven Mandaten": mdtMandaatgever~ cRuD BOX <TABLE sortable hideOnNoRecords>
+         [ "Gemandateerde": mdtGemandateerde cRud
+         , "Mandaatgrond": mdtMandaatgrond cRud
+         , "Handelingen": mdtHandelingen cRud
+         , "Delegaat?": mdtIsDelegaat cRud
+         , "Ondermandateerbaar": mdtIsMandateerbaar cRud
+         , "Begindatum": mdtBeginDatum cRud
+         , "Einddatum": mdtEindDatum cRud
+         ]
+      , "Verkregen Mandaten": mdtGemandateerde~ cRud BOX <TABLE sortable hideOnNoRecords>
+         [ "Mandaatgever": mdtMandaatgever cRud
+         , "Mandaatgrond": mdtMandaatgrond cRud
+         , "Handelingen": mdtHandelingen cRud
+         , "Delegaat?": mdtIsDelegaat cRud
+         , " ": I cRud BOX <PROPBUTTON>
+            [ label: TXT "Doormandateren" -- text to show on the button
+            , property: mdtDoormandateerReq cRUd -- relation of type [PROP] whose value is toggled when user presses button
+            , disabled: (I-mdtIsMandateerbaar) cRud -- when expression is not empty, button is disabled (user cannot click it)
+            ]
+         , "Begindatum": mdtBeginDatum cRud
+         , "Einddatum": mdtEindDatum cRud
+         ]
+      ]
+   ]
+
+INTERFACE "HandelingsSpecificatie": I[HSpec] cRud BOX
+   [ "Referentie": hspecRef cRUd  -- verwijzing waarmee deze HSpec eenduidig kan worden geidentificeerd
+   , "Is een specialisatie van": I cRud BOX <OBJECTDROPDOWN> -- SRC HSpec is een specialisatie van TGT HSpec (en erft dus de Specificatie, Voorwaarde en Aanwijzigingen)
+      [ selectfrom: -I cRud <HSpec> -- Select from all HSpecs other than the current one.
+      , setrelation: hspecISAHSpec cRUd
+      , instruction: TXT "Select parent HSpec"
+      ]
+   , "Specificatie": hspecSpecificatie cRUd -- tekstuele specificatie van de handeling(en)
+   , "Voorwaarde(n)": hspecVoorwaarde cRUd -- Voorwaarden voor het geldig uiteofenen van handelingen van dit soort
+   , "Aanwijzing(en)": hspecAanwijzing cRUd -- Verdere aanwijzingen/inlichtingen voor het uitoefenen van dit soort handelingen
+   , "Opmerking(en)": hspecNote cRUd -- ruimte om allerlei andere dingen op te schrijven
+   ]
+
+INTERFACE "Mandaat": I[Mandaat] cRud BOX <RAW form>
+   [ "uitgegeven door sessieParty": I /\ V;"_SESSION";sessionParty;mdtMandaatgever~ cRud BOX
+      [ "Gemandateerde": I cRud BOX <OBJECTDROPDOWN> -- Party aan wie zekere bevoegdheden zijn verleend
+         [ selectfrom: -mdtMandaatgever cRud
+         , setrelation: mdtGemandateerde cRUd
+         , instruction: TXT "Kies te mandateren party"
+         ]
+      , "Gemandateerde handelingen": mdtHandelingen cRud
+      , "Ondermandateerbaar": mdtIsMandateerbaar cRUd     -- Ondermandateren (doormandateren) van het mandaat is toegestaan
+      , "Begindatum": mdtBeginDatum cRUd                 -- Eerste dag waarop de bevoegdheid geldig is
+      , "Einddatum": mdtEindDatum cRUd                   -- Laatste dag waarop de bevoegdheid geldig is
+      , "Mandaatgever": mdtMandaatgever cRud
+      ]
+   , "verkregen door sessieParty": I /\ V;"_SESSION";sessionParty;mdtGemandateerde~ cRud BOX
+      [ "Gemandateerde handelingen": mdtHandelingen -- Specificatie van het soort handeling(en) waarvoor de bevoegdheid is verleend
+      , "Ondermandateerbaar": mdtIsMandateerbaar cRUd     -- Ondermandateren (doormandateren) van het mandaat is toegestaan
+      , "Begindatum": mdtBeginDatum cRUd                 -- Eerste dag waarop de bevoegdheid geldig is
+      , "Einddatum": mdtEindDatum cRUd                   -- Laatste dag waarop de bevoegdheid geldig is
+      , "Mandaatgever": mdtMandaatgever cRud
+      ]
+   ]
+
+ENDCONTEXT

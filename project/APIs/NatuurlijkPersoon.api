@@ -1,0 +1,352 @@
+CONTEXT "NatuurlijkPersoon API"
+{- Een `NatuurlijkPersoon` kent twee verschijningsvormen (specialisaties):
+1. Een `NPForm` waarin we het editen doen, credentials inlezen enzovoorts.
+2. Een `NPReg` die geacht wordt aan alle regels te voldoen van de Party die eigenaar is van de applicatie.
+
+Een transitie NPForm -> NPReg vindt plaats als voldaan is aan een van de volgende regels:
+- npFormIsClean /\ npFormSelectReq /\ npFormIdentifiesSingleNPReg ('zoeken/selecteren': NPForm wordt vervangen door NPReg)
+- npFormIsClean /\ npFormRegReq    /\ npFormIdentifiesNoNPs       ('registreren': NPForm wordt zelf een NPReg)
+Hierbij geldt:
+- `npFormIsClean[NPForm]` geeft aan dat de inhoud van de NPForm aan de regels van de applicatie voldoet om een NPReg te worden.
+  We verwachten dat de applicatie ExecEngine rules heeft die deze property (de)populeert.
+  Dat moet gebeuren op basis van het gebruik van de NPForm - het is geen algemeen geldende regel!
+  (file "../Generic/Generic_NPLogin.adl" laat zien hoe je dit specifiek is gemaakt voor inloggen.)
+- `npFormSelectReq[NPForm]` verzoekt NPForm door een bestaande NPReg te vervangen zodra `npFormIsClean` is gezet.
+  Je kunt deze al zetten voordat een NPForm 'clean' is; dan wordt de bijbehorende NPReg geselecteerd zodra dit het geval wordt.
+  Bij het succesvol inlezen van een NP-credential wordt npFormSelectReq meteen gezet.
+  De applicatie moet zelf bepalen wat te doen als dit niet meteen ook tot een NPForm->NPReg transitie leidt.
+- `npFormRegReq[NPForm]` verzoekt NPForm te registreren (dan wordt het een NPReg) zodra `npFormIsClean` is gezet.
+  Je kunt deze al zetten voordat een NPForm 'clean' is; dan wordt-ie geregistreerd zodra dit het geval wordt
+  en de NPForm op dat moment geen bestaande NPReg identificeert.
+  De applicatie moet zelf bepalen wat te doen als er dan al wel een overeenkomstige NPReg bestaat.
+- `npFormIdentifiesNoNPs[NPForm]` geeft aan dat er geen enkele NPReg is die overeenkomt met de gegevens uit de NPForm.
+  Als dit het geval is op het moment van de transitie, dan wordt obv de NPForm een nieuwe NPReg aangemaakt.
+- `npFormIdentifiesSingleNPReg[NPForm]` geeft aan dat er precies 1 NPReg is die overeenkomt met de gegevens uit de NPForm.
+  Als dit het geval is op het moment van de transitie, dan wordt de inhoud van de NPForm toegevoegd aan de NPReg.
+
+Een transitie NPReg -> NPForm vindt plaats als `npregEditReq[NPReg]` wordt gezet.
+-}
+
+--[Concepts/Classifications]
+CONCEPT NatuurlijkPersoon "een mens van vlees en bloed, met een identiteit (naam en voornamen), afstamming (al dan niet bekend of puur juridisch), geboorteplaats en -datum en als het enigszins kan ook -tijdstip, geslacht en nationaliteit" "logius" -- http://data.stelselvanbasisregistraties.nl/begrippen/
+CONCEPT NPForm "an NatuurlijkPersoon-object that is being created/updated and therefore does not need to comply with all rules"
+CONCEPT NPReg "an NatuurlijkPersoon-object that is consolidated (can be read/deleted) and therefore MUST comply with all rules"
+
+CLASSIFY NPForm, NPReg ISA NatuurlijkPersoon
+
+ROLE ExecEngine MAINTAINS "By default, an NatuurlijkPersoon object can be edited" -- e.g. immediately after its creation.
+RULE "By default, an NatuurlijkPersoon object can be edited": I[NatuurlijkPersoon]-I[NPReg] |- I[NPForm]
+VIOLATION (TXT "{EX} SetConcept;NatuurlijkPersoon;NPForm;", SRC I[NatuurlijkPersoon])
+
+--[Object Attributes]
+IDENT NPRegs: NPReg(npVoornamen,npGeslachtsnaam) -- Note that only `NPReg`s must satisfy this constraint
+IDENT NPBSNs: NPReg(npBSN)
+-- Multiplicity constraints work on ALL NPs, so should be used very reluctantly
+npBSN             :: NatuurlijkPersoon * BSN                 [UNI] -- Burger Service Nummer
+npGeslachtsnaam   :: NatuurlijkPersoon * Geslachtsnaam       [UNI]
+npRoepnaam        :: NatuurlijkPersoon * Voornaam            [UNI] -- Kan anders zijn dan de eerste voornaam, bijv. "Jan"
+npEersteVoornaam  :: NatuurlijkPersoon * Voornaam            [UNI] -- Eerste van de voornamen, bijv. "Johannes"; zie ook hieronder.
+npVoornamen       :: NatuurlijkPersoon * Voornamen           [UNI] -- Alle voornamen als 1 tekst, bijv. "Johannes Gerardus Tinus"
+npTitel           :: NatuurlijkPersoon * Titel               [UNI]
+npGeboortedatum   :: NatuurlijkPersoon * Datum               [UNI]
+npGeboorteplaats  :: NatuurlijkPersoon * Plaats              [UNI]
+npGeboorteland    :: NatuurlijkPersoon * LandOfGebied        [UNI]
+npGeslacht        :: NatuurlijkPersoon * Geslachtsaanduiding [UNI]
+
+REPRESENT Geslachtsnaam, Voornamen, Voornaam TYPE ALPHANUMERIC -- Moet compatibel zijn met 'FirstName' en 'LastName'
+REPRESENT BSN, Titel, Geslachtsaanduiding, Plaats, LandOfGebied TYPE ALPHANUMERIC -- kan zo nodig BIGALPHANUMERIC worden
+REPRESENT Datum TYPE DATE
+
+--[Define an API for inputing the form/fields]
+INCLUDE "./CredMetaData.api"
+npCredMD :: NatuurlijkPersoon * CredMetaData [INJ,UNI] -- bij inlezen van credential moet metadata kunnen meekomen
+
+--#IFNOT AutoCreateCredMetaDataAtom
+credMDIsNatuurlijkPersoon :: CredMetaData * CredMetaData [PROP]
+ROLE ExecEngine MAINTAINS "InsAtom and InsPair npCredMD"
+RULE "InsAtom and InsPair npCredMD": I[NatuurlijkPersoon] |- npCredMD;npCredMD~
+VIOLATION (TXT "{EX} InsAtom;CredMetaData"
+          ,TXT "{EX} InsPair;credMDIsNatuurlijkPersoon;CredMetaData;_NEW;CredMetaData;_NEW"
+          ,TXT "{EX} InsPair;npCredMD;NatuurlijkPersoon;", SRC I, TXT ";CredMetaData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom and DelPair credMDIsNatuurlijkPersoon"
+RULE "DelAtom and DelPair credMDIsNatuurlijkPersoon": credMDIsNatuurlijkPersoon |- npCredMD~;npCredMD
+VIOLATION (TXT "{EX} DelAtom;CredMetaData;", SRC I)
+--#ENDIF
+
+VIEW NatuurlijkPersoonCredInlezen: NatuurlijkPersoon
+{ "formAtom"       : I                           -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "NatuurlijkPersoonData" -- API through which credential data is read/issued
+, "credentialType" : TXT "NatuurlijkPersoon"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"          -- API through which credential MetaData is read
+, "credmdAtom"     : npCredMD                    -- Atom where MetaData is read
+, "buttonText"     : TXT "Persoonsgegevens inlezen"
+} HTML TEMPLATE "View-CredentialVerifyRequest.html" ENDVIEW
+
+VIEW NatuurlijkPersoonCredUitgeven : NatuurlijkPersoon
+{ "formAtom"       : I                           -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "NatuurlijkPersoonData" -- API through which credential data is read/issued
+, "credentialType" : TXT "NatuurlijkPersoon"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"          -- API through which credential MetaData is read
+, "credmdAtom"     : npCredMD                    -- Atom where MetaData is read
+, "buttonText"     : TXT "Persoonsgegevens credential"
+} HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+API "NatuurlijkPersoonData": I[NatuurlijkPersoon] CRud BOX
+   [ "bsn": npBSN cRUd -- Mag worden ingevuld vanuit een credential
+   , "geslachtsnaam": npGeslachtsnaam cRUd
+   , "roepnaam" : npRoepnaam cRUd
+   , "eerstevoornaam": npEersteVoornaam cRUd
+   , "voornamen": npVoornamen cRUd
+   , "titel": npTitel cRUd
+   , "geboortedatum": npGeboortedatum cRUd
+   , "geboorteplaats": npGeboorteplaats cRUd
+   , "geboorteland": npGeboorteland cRUd
+   , "geslacht": npGeslacht cRUd
+   ]
+
+--[Define a User INTERFACE for editing the form/fields]
+INTERFACE "NPForm": I[NPForm] cRud BOX <FORM title="Persoonsgegevens">
+   [ "BSN": npBSN cRud -- Een BSN wordt ALTIJD gegenereerd of anderszins door de computer (API?) ingevuld.
+   , "Geslachtsnaam": npGeslachtsnaam cRUd
+   , "Voornamen": npVoornamen cRUd
+   , "Roepnaam": npRoepnaam cRUd
+   , "Geboortedatum": npGeboortedatum cRUd
+   , "Geboorteplaats": npGeboorteplaats cRUd
+   , "Geboorteland": npGeboorteland cRUd
+   , "Titel": npTitel cRUd
+   , "Geslacht": npGeslacht[NatuurlijkPersoon*Geslachtsaanduiding] cRUd
+   , "ButtonBar": I cRud BOX <TABLE noHeader>
+      [ "OK": I cRud BOX <PROPBUTTON>
+         [ property : npFormSelectReq cRUd
+         , disabled : I[NPForm]-(npFormIsClean /\ (npFormIdentifiesNoNPs \/ npFormIdentifiesSingleNPReg)) cRud
+         ]
+      , "Annuleren": I cRud BOX <PROPBUTTON> [ property : npFormCancelReq  cRUd ]
+      ]
+   ]
+
+--[Rules that apply when filling in a NPForm]
+npFormPossibleNPRegs :: NPForm*NPReg -- The set of possible matches that exist in the consolidated registration
+RULE "An NPForm may not point to itself as an NPReg": npFormPossibleNPRegs |- -I[NatuurlijkPersoon]
+
+ROLE ExecEngine MAINTAINS "InsPair npFormPossibleNPRegs"
+RULE "InsPair npFormPossibleNPRegs": 
+   V[NPForm*NPReg]
+   /\ npBSN~\npBSN~
+   /\ npVoornamen[NatuurlijkPersoon*Voornamen]~\npVoornamen[NatuurlijkPersoon*Voornamen]~
+   /\ npGeslachtsnaam[NatuurlijkPersoon*Geslachtsnaam]~\npGeslachtsnaam[NatuurlijkPersoon*Geslachtsnaam]~
+   |- npFormPossibleNPRegs
+VIOLATION (TXT "{EX} InsPair;npFormPossibleNPRegs;NPForm;", SRC I, TXT ";NPReg;", TGT I
+          ,TXT "{EX} DelPair;npFormIdentifiesNoNPs;NPForm;", SRC I, TXT ";NPForm;", SRC I -- this prevents race-condition with rule "Eqv-InsPair npFormIdentifiesNoNPs":
+)
+ROLE ExecEngine MAINTAINS "DelPair npFormPossibleNPRegs"
+RULE "DelPair npFormPossibleNPRegs":
+    npFormPossibleNPRegs |- 
+    I[NPForm];(  npBSN~\npBSN~
+               /\ npVoornamen[NatuurlijkPersoon*Voornamen]~\npVoornamen[NatuurlijkPersoon*Voornamen]~
+               /\ npGeslachtsnaam[NatuurlijkPersoon*Geslachtsnaam]~\npGeslachtsnaam[NatuurlijkPersoon*Geslachtsnaam]~
+              );I[NPReg]
+VIOLATION (TXT "{EX} DelPair;npFormPossibleNPRegs;NPForm;", SRC I, TXT ";NPReg;", TGT I)
+
+--[Signalen op basis van `npFormPossibleNPRegs`]
+npFormIdentifiesSingleNPReg :: NPForm * NPForm [PROP]
+ROLE ExecEngine MAINTAINS "Eqv-InsPair npFormIdentifiesSingleNPReg"
+RULE "Eqv-InsPair npFormIdentifiesSingleNPReg": I[NPForm] /\ (npFormPossibleNPRegs - npFormPossibleNPRegs;-I[NPReg]);V |- npFormIdentifiesSingleNPReg
+VIOLATION (TXT "{EX} InsPair;npFormIdentifiesSingleNPReg;NPForm;", SRC I[NPForm], TXT ";NPForm;", SRC I[NPForm])
+ROLE ExecEngine MAINTAINS "Eqv-DelPair npFormIdentifiesSingleNPReg"
+RULE "Eqv-DelPair npFormIdentifiesSingleNPReg": npFormIdentifiesSingleNPReg |- I[NPForm] /\ (npFormPossibleNPRegs - npFormPossibleNPRegs;-I[NPReg]);V
+VIOLATION (TXT "{EX} DelPair;npFormIdentifiesSingleNPReg;NPForm;", SRC I[NPForm], TXT ";NPForm;", SRC I[NPForm])
+
+npFormIdentifiesNoNPs :: NPForm * NPForm [PROP]
+ROLE ExecEngine MAINTAINS "Eqv-InsPair npFormIdentifiesNoNPs"
+RULE "Eqv-InsPair npFormIdentifiesNoNPs": (I[NPForm]-npFormPossibleNPRegs;npFormPossibleNPRegs~) |- npFormIdentifiesNoNPs
+VIOLATION (TXT "{EX} InsPair;npFormIdentifiesNoNPs;NPForm;", SRC I[NPForm], TXT ";NPForm;", SRC I[NPForm])
+ROLE ExecEngine MAINTAINS "Eqv-DelPair npFormIdentifiesNoNPs"
+RULE "Eqv-DelPair npFormIdentifiesNoNPs": npFormIdentifiesNoNPs |- (I[NPForm]-npFormPossibleNPRegs;npFormPossibleNPRegs~)
+VIOLATION (TXT "{EX} DelPair;npFormIdentifiesNoNPs;NPForm;", SRC I[NPForm], TXT ";NPForm;", SRC I[NPForm])
+
+--[State machine for (switching between) editing npForms and using NPRegs]
+{- The idea is to have separate concepts for consolidated ('non-editable') NPs, which we call `NPReg`s,
+   and (editable) NPs that are being created/updated, which we call `NPForm`s
+   This makes it easier to specify different rule sets for each class of NPs,
+   and it prevents us from having to specify sets of (similar) relations for each of them.
+-}
+
+--[Processing of `NPForms`]
+-- Applicaties moeten zelf bepalen wanneer een NPForm clean is, want zij definieren ook hoe deze verder wordt geprocest.
+-- Voor hier is het van belang te weten dat een NPReg alleen dan wordt aangemaakt als de applicatie aangeeft dat-ie schoon is,
+-- zodat ook alle attributen van de NPReg die door de applicatie gewenst zijn, in de NPForm aanwezig zijn en dus in de NPReg terechtkomen.
+-- Applicaties die geen NPRegs aanmaken (zoals Generic_NPLogin) hoeven `npFormIsClean` niet te specificeren.
+
+--$ NPForm properties
+CONCEPT NPForm "A NatuurlijkPersoon object that may be edited and need not comply with all rules for consolidated NPs"
+npFormIsClean   :: NPForm * NPForm [PROP] -- Property that allows an NPForm to be committed (converted) to an NPReg
+npFormCancelReq :: NPForm * NPForm [PROP] -- Request to cancel editing on NPForm
+npFormSelectReq :: NPForm * NPForm [PROP] -- Request to select/further process the NPForm
+npFormRegReq    :: NPForm * NPForm [PROP] -- Request to commit the NPForm, i.e. create an NPReg from its contents
+
+-- The rule below must not be simplified any further, because there is a corresponding IDENT rule and lots of applications can go wrong if you do.
+RULE "Minimum requirement for `npFormIsClean`": npFormIsClean |- npFormIsMinimallyClean
+
+npFormIsMinimallyClean :: NPForm * NPForm [PROP] -- This can be used by applications that want more stringent cleanliness constraints
+-- ROLE ExecEngine MAINTAINS "Eqv-InsPair npFormIsMinimallyClean"
+-- RULE "Eqv-InsPair npFormIsMinimallyClean": I[NPForm] /\ npGeslachtsnaam;npGeslachtsnaam~ /\ npVoornamen;npVoornamen~ |- npFormIsMinimallyClean
+-- VIOLATION (TXT "{EX} InsPair;npFormIsMinimallyClean;NPForm;", SRC I[NPForm], TXT ";NPForm;", TGT I[NPForm])
+-- ROLE ExecEngine MAINTAINS "Eqv-DelPair npFormIsMinimallyClean"
+-- RULE "Eqv-DelPair npFormIsMinimallyClean": npFormIsMinimallyClean |- I[NPForm] /\ npGeslachtsnaam;npGeslachtsnaam~ /\ npVoornamen;npVoornamen~
+-- VIOLATION (TXT "{EX} DelPair;npFormIsMinimallyClean;NPForm;", SRC I[NPForm], TXT ";NPForm;", TGT I[NPForm])
+
+ENFORCE npFormIsMinimallyClean := 
+   I[NPForm]
+   /\ npGeslachtsnaam[NatuurlijkPersoon*Geslachtsnaam];npGeslachtsnaam[NatuurlijkPersoon*Geslachtsnaam]~
+   /\ npVoornamen[NatuurlijkPersoon*Voornamen];npVoornamen[NatuurlijkPersoon*Voornamen]~
+
+--$ NPForm Processing - Canceling
+ROLE ExecEngine MAINTAINS "Service npFormCancelReq"
+RULE "Service npFormCancelReq": npFormCancelReq |- -V
+VIOLATION (TXT "{EX} DelAtom;NPForm;", SRC I[NPForm])
+
+ROLE ExecEngine MAINTAINS "Auto cancel NPForms from credentials"
+RULE "Auto cancel NPForms from credentials": I[NPForm] /\ npCredMD;credmdIsCanceled;npCredMD~ |- npFormCancelReq
+VIOLATION (TXT "{EX} InsPair;npFormCancelReq;NPForm;", SRC I[NPForm], TXT ";NPForm;", SRC I[NPForm])
+
+--$ NPForm Processing - Selecting an existing NP
+ROLE ExecEngine MAINTAINS "Auto select NPForms from credentials"
+RULE "Auto select NPForms from credentials": I[NPForm] /\ npCredMD;credmdIsSuccess;npCredMD~ |- npFormSelectReq
+VIOLATION (TXT "{EX} InsPair;npFormSelectReq;NPForm;", SRC I[NPForm], TXT ";NPForm;", SRC I[NPForm])
+
+-- In plaats van `Deny npFormSelectReq` gaan we wachten totdat we kunnen gaan servicen (of de applicatie actie onderneemt)
+-- ROLE ExecEngine MAINTAINS "Deny npFormSelectReq"
+-- RULE "Deny npFormSelectReq": npFormSelectReq |- npFormIsClean /\ (npFormIdentifiesNoNPs \/ npFormIdentifiesSingleNPReg)
+-- VIOLATION (TXT "{EX} DelPair;npFormSelectReq;NPForm;", SRC I[NPForm], TXT ";NPForm;", TGT I[NPForm]
+--           ,TXT "{EX} DelAtom;CredMetaData;", SRC npCredMD
+-- )
+ROLE ExecEngine MAINTAINS "Service npFormSelectReq"
+RULE "Service npFormSelectReq": npFormSelectReq /\ npFormIsClean /\ npFormIdentifiesSingleNPReg |- -I[NPForm]
+VIOLATION (TXT "{EX} SetConcept;NatuurlijkPersoon;NPReg;", SRC I[NPForm]
+          ,TXT "{EX} ClearConcept;NPForm;", SRC I[NPForm] -- Hiermee worden `npFormSelectReq` etc. allemaal ge-reset
+          ,TXT "{EX} MrgAtoms;NatuurlijkPersoon;", SRC npFormPossibleNPRegs, TXT ";NatuurlijkPersoon;", TGT I
+)
+--$ NPForm Processing - Registration of a new NP
+-- In plaats van `Deny npFormRegReq` gaan we wachten totdat we kunnen gaan servicen (of de applicatie actie onderneemt)
+-- ROLE ExecEngine MAINTAINS "Deny npFormRegReq"
+-- RULE "Deny npFormRegReq": npFormRegReq |- npFormIsClean /\ npFormIdentifiesNoNPs
+-- VIOLATION (TXT "{EX} DelPair;npFormSelectReq;NPForm;", SRC I[NPForm], TXT ";NPForm;", TGT I[NPForm]
+-- )
+ROLE ExecEngine MAINTAINS "Service npFormRegReq"
+RULE "Service npFormRegReq": npFormRegReq /\ npFormIsClean /\ npFormIdentifiesNoNPs |- -I[NPForm]
+VIOLATION (TXT "{EX} SetConcept;NatuurlijkPersoon;NPReg;", SRC I[NPForm]
+          ,TXT "{EX} ClearConcept;NPForm;", SRC I[NPForm] -- Hiermee worden `npFormRegReq` etc. allemaal ge-reset
+)
+--[Processing of `NPRegs`]
+npregEditReq   :: NPReg  * NPReg  [PROP] -- Request to enable editing on NPReg
+ROLE ExecEngine MAINTAINS "Service npregEditReq"
+RULE "Service npregEditReq": npregEditReq |- -I[NPReg]
+VIOLATION (TXT "{EX} SetConcept;NPReg;NPForm;", SRC I [NPReg]
+          ,TXT "{EX} ClearConcept;NPReg;", SRC I[NPReg] -- Hiermee wordt `npregEditReq` automatisch ge-reset
+)
+--$ Compute `EersteVoornaam` when `Voornamen` is given]
+procdVoornamen :: NatuurlijkPersoon * Voornamen [UNI] -- Alle voornamen moeten zijn geprocest
+ROLE ExecEngine MAINTAINS "Process Voornamen"
+RULE "Process Voornamen": I[NPReg];npVoornamen |- procdVoornamen
+VIOLATION (TXT "{EX} InsPair;npEersteVoornaam;NatuurlijkPersoon;", SRC I, TXT ";Voornaam;{php}explode(' ',trim('", TGT I[Voornamen], TXT"'))[0]"
+          ,TXT "{EX} InsPair;procdVoornamen;NatuurlijkPersoon;", SRC I, TXT ";Voornamen;", TGT I[Voornamen]
+)
+--$ Default value for `Roepnaam` is (eerste) `Voornaam`
+ROLE ExecEngine MAINTAINS "InsPair npRoepnaam with default value"
+RULE "InsPair npRoepnaam with default value": (I[NPReg]-npRoepnaam;npRoepnaam~);npEersteVoornaam |- npRoepnaam
+VIOLATION (TXT "{EX} InsPair;npRoepnaam;NatuurlijkPersoon;", SRC I, TXT ";Voornaam;", TGT I)
+
+--[Linking concept `NatuurlijkPersoon` to the SIAM concept `Person`]
+--Note that when there is a NatuurlijkPersoon and a Person, the NatuurlijkPersoon takes precedence
+CLASSIFY NatuurlijkPersoon ISA Person
+CLASSIFY Voornaam ISA FirstName
+CLASSIFY Geslachtsnaam ISA LastName
+
+-- EQUIVALENCE personFirstName[Person*FirstName] == I[NPReg];npRoepnaam
+personFirstName :: Person * FirstName -- define relation personFirstName as shorthand for npEersteVoornaam
+ROLE ExecEngine MAINTAINS "Eqv-InsPair personFirstName"
+RULE "Eqv-InsPair personFirstName": I[NPReg];npRoepnaam |- personFirstName
+VIOLATION (TXT "{EX} InsPair;personFirstName;Person;", SRC I[Person], TXT ";FirstName;", TGT I[FirstName])
+ROLE ExecEngine MAINTAINS "Eqv-DelPair personFirstName"
+RULE "Eqv-DelPair personFirstName": personFirstName |- I[NPReg];npRoepnaam
+VIOLATION (TXT "{EX} DelPair;personFirstName;Person;", SRC I[Person], TXT ";FirstName;", TGT I[FirstName])
+
+-- EQUIVALENCE personLastName[Person*LastName] == npGeslachtsnaam
+personLastName :: Person * LastName -- define relation personLastName as shorthand for npGeslachtsnaam
+ROLE ExecEngine MAINTAINS "Eqv-InsPair personLastName"
+RULE "Eqv-InsPair personLastName": I[NPReg];npGeslachtsnaam |- personLastName
+VIOLATION (TXT "{EX} InsPair;personLastName;Person;", SRC I[Person], TXT ";LastName;", TGT I[LastName])
+ROLE ExecEngine MAINTAINS "Eqv-DelPair personLastName"
+RULE "Eqv-DelPair personLastName": personLastName |- I[NPReg];npGeslachtsnaam
+VIOLATION (TXT "{EX} DelPair;personLastName;Person;", SRC I[Person], TXT ";LastName;", TGT I[LastName])
+
+--[VIEWs en INTERFACEs voor het inzien van OverlijdenData]
+
+INTERFACE "ToonVoornamenGeslachtsnaamGebDatumGebPlaats": I[NatuurlijkPersoon] cRud BOX <RAW table>
+   [ "Voornamen": npVoornamen cRud
+   , " ": TXT "&nbsp;"
+   , "Geslachtsnaam": npGeslachtsnaam cRud
+   , "(": TXT "&nbsp;(geboren op&nbsp;"
+   , "Datum": npGeboortedatum cRud
+   , "te": TXT "te&nbsp;"
+   , "Plaats": npGeboorteplaats cRud
+   , ")": TXT ")"
+   ]
+
+VIEW NP_Debugview: NatuurlijkPersoon
+{ "1":npTitel
+, "2":TXT " "
+, "3":npVoornamen[NatuurlijkPersoon*Voornamen]
+, "4":TXT " "
+, "5":npGeslachtsnaam[NatuurlijkPersoon*Geslachtsnaam]
+, "6":TXT " ("
+, "7":npRoepnaam
+, "8":TXT "), geboren te "
+, "9":npGeboorteplaats
+, "A":TXT " op "
+, "B":npGeboortedatum
+} ENDVIEW
+
+VIEW NP_Naam: Person DEFAULT
+{ "1":npEersteVoornaam
+, "2":TXT " "
+, "3":npGeslachtsnaam[NatuurlijkPersoon*Geslachtsnaam]
+} ENDVIEW
+
+VIEW NP_Volledigenaam: NatuurlijkPersoon
+{ "1":npTitel
+, "2":TXT " "
+, "3":npVoornamen[NatuurlijkPersoon*Voornamen]
+, "4":TXT " "
+, "5":npGeslachtsnaam[NatuurlijkPersoon*Geslachtsnaam]
+} ENDVIEW
+
+VIEW NP_Geboorte: NatuurlijkPersoon
+{ "1":npGeboortedatum
+, "2":TXT ", "
+, "3":npGeboorteplaats
+, "4":TXT ", "
+, "5":npGeboorteland
+} ENDVIEW
+
+VIEW NP_GebPlaatsDatum: NatuurlijkPersoon
+{ "1":npEersteVoornaam
+, "4":TXT " "
+, "5":npGeslachtsnaam
+, "6":TXT ", geboren te "
+, "7":npGeboorteplaats
+, "8":TXT " op "
+, "9":npGeboortedatum
+} ENDVIEW
+
+VIEW NP_GebDatum: NatuurlijkPersoon
+{ "voornaam": npEersteVoornaam
+, " ": TXT " "
+, "achternaam": npGeslachtsnaam
+, ";": TXT "; (geb.datum: "
+, "geb.datum": npGeboortedatum
+, ")": TXT ")"
+} ENDVIEW
+
+ENDCONTEXT

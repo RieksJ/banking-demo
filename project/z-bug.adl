@@ -1,0 +1,111 @@
+CONTEXT IssueX
+
+CONCEPT I_Am "Representation of the Actor that the system itself is"
+
+CLASSIFY NatuurlijkePersoon ISA Person
+CLASSIFY Bank, Onderneming ISA Organization
+CLASSIFY Person, Organization ISA Party
+CLASSIFY Person, I_Am ISA Actor
+CLASSIFY Party, Actor ISA AorP
+
+CLASSIFY PartyRef, ActorRef ISA IdentRef
+CLASSIFY OrgRef ISA PartyRef
+CLASSIFY PersonRef ISA PartyRef
+CLASSIFY PersonRef ISA ActorRef
+
+accIsSysAdmin :: Account * Account [PROP]
+accPartyRef   :: Account * PartyRef [UNI]
+accActorRef   :: Account * ActorRef [UNI]
+
+--[Refs for Parties and Actors]
+
+partyRef  :: Party * PartyRef [UNI] MEANING "The human readable name/identifier that the application uses to refer to the Party"
+actorRef  :: Actor * ActorRef [UNI] MEANING "The human readable name/identifier that the application uses to refer to the Actor"
+
+ownerRef  :: AorP  * PartyRef [UNI] MEANING "The human readable name/identifier of the Party that owns the Actor or Party"
+isOwnedBy :: AorP  * Party    [UNI] MEANING "The Party that owns (=completely controls) the Actor or Party"
+
+--[I_Am]
+
+CLASSIFY I_Am ISA Actor
+
+RULE "There can only be one I_Am": V[I_Am] = I[I_Am]
+POPULATION I_Am CONTAINS [ "I_Am" ] -- This is what I_Am
+
+-- `I_Am` is about the `Actor` that this system (i.e. the webserver) is.
+  POPULATION actorRef      CONTAINS [ ("I_Am", "Bank webserver")]
+  POPULATION ownerRef      CONTAINS [ ("I_Am", "XXXX Bank") ] -- Naam moet overeenkomen met die uit de excel
+
+--[Always INCLUDE the basics]
+   INCLUDE "./SIAMv4/SIAM_PF_Integration.adl"     -- Integration with code and quircks from the Prototype Framework.
+   INCLUDE "./SIAMv4/SIAM_Basics.adl"             -- This is the **Core functionality**: Accounts, Sessions, Roles, etc.
+
+--[Optionally INCLUDE Account registration and management]
+   INCLUDE "./SIAMv4/SIAM_AccountRegUsingForm.adl"-- Create Account for a User (=Actor/Party pair) based on filling in a Form.
+   INCLUDE "./SIAMv4/SIAM_AccountRegUsingUID.adl" -- Create Account for a User (=Actor/Party pair) based on him having logged in with a UID.
+
+--[Choose your support for login, suspend, logout]
+-- INCLUDE "./SIAMv4/SIAM_ISO_LoA.adl"            -- Extension that introduces ISO authentication levels in a basic fashion.
+   INCLUDE "./SIAMv4/SIAM_LoginLogging.adl"       -- Extension that keeps track of when logins are done.
+   INCLUDE "./SIAMv4/SIAM_LoginWithUPW.adl"       -- Login using U/PW (Usernames and Passwords).
+-- INCLUDE "./SIAMv4/SIAM_LoginWithUID.adl"       -- Login using UIDs (userids from third Party identity providers).
+
+--[Optionally INCLUDE extensions for handling Organizations]
+   INCLUDE "./SIAMv4/SIAM_Organizations.adl"      -- Extension that implements Organizations (as a Party).
+
+--[Optionally INCLUDE extensions for handling Persons]
+   INCLUDE "./SIAMv4/SIAM_Persons.adl"            -- Extension that implements Person objects (as Parties AND Actors).
+   INCLUDE "./SIAMv4/SIAM_PersonAttributes.adl"    -- Add support for basic attributes
+
+--[Examples of possibly useful RULEs that may be uncommented and adjusted as necessary]
+
+--[INJectivity of Ref-names]
+   RULE "`partyRef` must identify a Party": partyRef;partyRef~ |- I[Party]
+   RULE "`actorRef` must identify an Actor": actorRef;actorRef~ |- I[Actor]
+   RULE "`orgRef` must identify an Organization": orgRef;orgRef~ |- I[Organization]
+   RULE "`personRef` must identify a Person": personRef;personRef~ |- I[Person]
+
+--[SysAdmin account and session]
+-- Activate these rules if you want to ensure you have a SystemAdmin account
+
+   ROLE ExecEngine MAINTAINS "Create SystemAdmin account if the default population doesn't have it"
+   RULE "Create SystemAdmin account if the default population doesn't have it": I[ONE] |- V;accIsSysAdmin;V
+   VIOLATION (TXT "{EX} InsAtom;Account"
+             ,TXT "{EX} InsPair;accIsSysAdmin;Account;_NEW;Account;_NEW"
+             ,TXT "{EX} InsPair;accUserid;Account;_NEW;Userid;sysadmin"
+             ,TXT "{EX} InsPair;accPassword;Account;_NEW;Password;sysadmin"
+             ) --}
+   ROLE ExecEngine MAINTAINS "Assign sysadmin account PartyRef of I_Am"
+   RULE "Assign sysadmin account PartyRef of I_Am": 
+      (accIsSysAdmin-accPartyRef;accPartyRef~);V[Account*I_Am];I[AorP];ownerRef[AorP*PartyRef] |- accPartyRef
+   VIOLATION (TXT "{EX} InsPair;accPartyRef;Account;", SRC I, TXT ";PartyRef;", TGT I)
+
+
+  INCLUDE "./Bank_BankEnRekeningenRegister.xlsx" -- Default contents of bank accounts of various people and different banks
+
+--[Banks]
+--$ Zittende data (licentiehouders, rekeningen etc.)
+  INCLUDE "./Bank_Licentiehouders.adl"
+  INCLUDE "./Bank_Betaalopdrachten.xlsx" -- Een aantal betaalopdrachten zodat de rekeningen niet meteen 'leeg' zijn.
+
+  INCLUDE "./Bank_Views.adl"
+
+--$ SSI interfacing
+  INCLUDE "./Bank_Attestaties.adl"
+
+--$ Applicatie - Portaal en functionaliteiten
+  INCLUDE "./Bank_Portaal.adl"
+
+  INCLUDE "./Bank_BrekRekeningen.adl" -- algemene bankrekeningen; alle rekeningen vallen hieronder.
+  INCLUDE "./Bank_BrekRechten.adl" -- Wie mag inzien? Wie overmaken? Wie mandateren?
+  INCLUDE "./Bank_Adresboek.adl"
+
+--  INCLUDE "./Bank_BrekRegForms.adl" -- Invullen van formulieren voor het aanvragen van een Bankrekening
+
+  INCLUDE "./Bank_BrekTransacties.adl" -- Bijschrijven en afschrijven van bedragen op bankrekeningen
+
+  INCLUDE "./Bank_Betaalopdrachten.adl" -- Levenscyclus van Betaalopdrachten, die leiden tot bij- en afschrijvingen
+
+  INCLUDE "./Bank_Mandaten.adl"
+
+ENDCONTEXT

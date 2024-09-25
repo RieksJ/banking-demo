@@ -1,0 +1,24 @@
+CONTEXT TestDutchAddr
+
+INCLUDE "./DutchAddrAutofill.ifc"
+
+sessionDaddr :: SESSION * DutchAddr [UNI]
+
+INTERFACE "AnonHome": I[SESSION] cRud BOX <RAW form>
+   [ "Input": sessionDaddr CRuD BOX <TABLE>
+      [ "Postcode" : daddrZIPCode
+      , "Huisnummer" : daddrStreetNr
+      ]
+   , "Result": V[SESSION*DutchAddr] cRud BOX <TABLE sortable hideOnNoRecords>
+      [ "Straat" : daddrStreet cRud
+      , "Huisnummer" : daddrStreetNr cRud
+      , "Toevoeging" : daddrStrNrAddition cRud
+      , "Huisletter" : daddrStrNrLetter cRud
+      , "Plaats" : daddrCity cRud
+      , "Gemeente" : daddrMunicipality cRud
+      , "Provincie" : daddrProvince cRud
+      , "Kadaster-ID" : daddrID cRud
+      ]
+   ]
+
+ENDCONTEXT

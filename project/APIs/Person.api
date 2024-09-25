@@ -1,0 +1,79 @@
+CONTEXT "Person API"
+
+INCLUDE "./SIAMv4/SIAM_Persons.adl" -- Link Person with Parties, Actors, Accounts, Idents
+INCLUDE "./SIAMv4/SIAM_PersonAttributes.adl" -- Firstname, lastname, initials
+
+INCLUDE "./CredMetaData.api"
+INCLUDE "./DutchAddr.api"
+
+--#IF IncludeNatuurlijkPersoonAPI
+INCLUDE "./NatuurlijkPersoon.api"
+--#ENDIF
+
+--[Attributes defined in SIAM_Persons.adl and SIAM_PersonAttributes.adl]
+personRef        :: Person * PersonRef      [UNI] -- The human readable name/identifier to refer to the Person
+personFullName   :: Person * PersonFullName [UNI] -- the long (full) name by which the Person may be identified
+personFirstName  :: Person * FirstName      [UNI]
+personMiddleName :: Person * MiddleName     [UNI]
+personLastName   :: Person * LastName       [UNI]
+personInitials   :: Person * Initials       [UNI]
+
+REPRESENT PersonRef, FirstName, MiddleName, LastName, Initials, PersonFullName TYPE ALPHANUMERIC
+
+--[Additional, commonly used attributes]
+personPhoneNr    :: Person * PhoneNr          -- Personal phone number (i.e. of the Party+Actor)
+personEmailAddr  :: Person * EmailAddr        -- Personal email address(es) (i.e. of the Party+Actor)
+personHomeAddr   :: Person * DutchAddr  [UNI] -- Address where the person lives (i.e. of the Party+Actor)
+
+REPRESENT PhoneNr, EmailAddr TYPE ALPHANUMERIC
+
+--[Define an API for inputing the form/fields]
+personCredMD :: Person * CredMetaData [INJ,UNI]
+
+--#IFNOT AutoCreateCredMetaDataAtom
+credMDIsPerson :: CredMetaData * CredMetaData [PROP]
+ROLE ExecEngine MAINTAINS "InsAtom and InsPair personCredMD"
+RULE "InsAtom and InsPair personCredMD": I[Person] |- personCredMD;personCredMD~
+VIOLATION (TXT "{EX} InsAtom;CredMetaData"
+          ,TXT "{EX} InsPair;credMDIsPerson;CredMetaData;_NEW;CredMetaData;_NEW"
+          ,TXT "{EX} InsPair;personCredMD;Person;", SRC I, TXT ";CredMetaData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom and DelPair credMDIsPerson"
+RULE "DelAtom and DelPair credMDIsPerson": credMDIsPerson |- personCredMD~;personCredMD
+VIOLATION (TXT "{EX} DelAtom;CredMetaData;", SRC I)
+--#ENDIF
+
+VIEW PersonCredInlezen: Person
+{ "formAtom"       : I                  -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "PersonData"   -- API through which credential data is read/issued
+, "credentialType" : TXT "Person"       -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData" -- API through which credential MetaData is read
+, "credmdAtom"     : personCredMD       -- Atom where MetaData is read
+, "buttonText"     : TXT "Persoonsgegevens inlezen"
+} HTML TEMPLATE "View-CredentialVerifyRequest.html" ENDVIEW
+
+VIEW PersonCredUitgeven : Person
+{ "formAtom"       : I                  -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "PersonData"   -- API through which credential data is read/issued
+, "credentialType" : TXT "Person"       -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData" -- API through which credential MetaData is read
+, "credmdAtom"     : personCredMD       -- Atom where MetaData is read
+, "buttonText"     : TXT "Persoonsgegevens credential"
+} HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+API "PersonData": I[Person] CRud BOX
+    [ "personRef": personRef cRUd
+    , "fullName": personFullName cRUd
+    , "firstName": personFirstName cRUd
+    , "middleName": personMiddleName cRUd
+    , "lastName": personLastName cRUd
+    , "initials": personInitials cRUd
+    , "phoneNr": personPhoneNr cRUd
+    , "emailAddr": personEmailAddr cRUd
+    , "homeAddr": personHomeAddr API "DutchAddrData"
+--#IF IncludeNatuurlijkPersoonAPI
+    , "persoonsgegevens": I API "NatuurlijkPersoonData"
+--#ENDIF
+    ]
+
+ENDCONTEXT

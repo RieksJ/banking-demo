@@ -1,0 +1,19 @@
+CONTEXT "DutchAddrAttestations"
+
+INCLUDE "./DutchAddr.adl"
+
+--[Attestation Issuing API for DutchAddr]
+API "DutchAddrAttestation": I[DutchAddr] cRud BOX
+   [ "id" : daddrID cRud
+   , "straat" : daddrStreet cRud
+   , "huisnummer" : daddrStreetNr cRud
+   , "huisletter" : daddrStrNrLetter cRud
+   , "huisnummertoevoeging" : daddrStrNrAddition cRud
+   , "straattoevoeging" : daddrStrAddition cRud
+   , "postcode" : daddrZIPCode cRud
+   , "plaats" : daddrCity cRud
+   , "gemeente" : daddrMunicipality cRud
+   , "provincie" : daddrProvince cRud
+   ]
+
+ENDCONTEXT

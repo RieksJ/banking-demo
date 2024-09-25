@@ -1,0 +1,49 @@
+{
+    "payload": {
+        "overlijden": {
+            "overledene": {
+                "bsn": "274214180",
+                "geslachtsnaam": "Klaassen",
+                "roepnaam": "Catharina",
+                "eerstevoornaam": "Catharina",
+                "voornamen": "Catharina Amalia Cornelia",
+                "geboortedatum": "1962-02-02",
+                "geboorteplaats": "Rotterdam",
+                "geboorteland": "Nederland",
+                "geslacht": "V"
+            },
+            "laatsteWoonadres": {
+                "straatnaam": "Tuinbouwlaan",
+                "huisnummer": "18",
+                "postcode": "3510AB",
+                "plaats": "Utrecht",
+                "gemeente": "Utrecht",
+                "adresregel1": "Tuinbouwlaan 18",
+                "adresregel3": "3510AB Utrecht",
+                "adreslabel": "Tuinbouwlaan 18\n3510AB Utrecht"
+            },
+            "overlijdensdatum": "2021-02-02",
+            "overlijdensplaats": "Amsterdam",
+            "overlijdensgemeente": "Amsterdam"
+        },
+        "rechthebbende": {
+            "persoonsgegevens": {
+                "bsn": "274835290",
+                "geslachtsnaam": "Klaassen",
+                "roepnaam": "Jan",
+                "eerstevoornaam": "Johannes",
+                "voornamen": "Johannes",
+                "geboortedatum": "1961-01-01",
+                "geboorteplaats": "Amsterdam",
+                "geboorteland": "Nederland",
+                "geslacht": "M"
+            },
+            "telefoonnummer": [],
+            "emailadres": []
+        },
+        "isErfgenaam": true,
+        "isBegrafenisexecuteur": false,
+        "isBeheersexecuteur": true,
+        "isAfwikkelingsbewindvoerder": false
+    }
+}

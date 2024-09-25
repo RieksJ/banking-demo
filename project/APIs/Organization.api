@@ -1,0 +1,63 @@
+CONTEXT "Organization API"
+
+INCLUDE "./CredMetaData.api"
+
+--#IF IncludeOndernemingAPI
+INCLUDE "./Onderneming.api"
+--#ENDIF
+
+CLASSIFY Organization ISA Party
+
+CLASSIFY OrgRef ISA PartyRef -- and thereby an IdentRef
+REPRESENT OrgRef TYPE ALPHANUMERIC
+
+CLASSIFY OrgFullName ISA IdentRef -- This allows to test/ensure e.g. orgFullName |- orgRef
+
+orgRef      :: Organization * OrgRef      [UNI] -- The human readable name/identifier to refer to the organization
+orgFullName :: Organization * OrgFullName [UNI] -- the long (full) name by which the organization may be identified
+orgLogoURL  :: Organization * URL         [UNI] -- URL at which the logo of the organization can be found
+
+--[Define an API for inputing the form/fields]
+orgCredMD :: Organization * CredMetaData [INJ,UNI]
+
+--#IFNOT AutoCreateCredMetaDataAtom
+credMDIsOrganization :: CredMetaData * CredMetaData [PROP]
+ROLE ExecEngine MAINTAINS "InsAtom and InsPair orgCredMD"
+RULE "InsAtom and InsPair orgCredMD": I[Organization] |- orgCredMD;orgCredMD~
+VIOLATION (TXT "{EX} InsAtom;CredMetaData"
+          ,TXT "{EX} InsPair;credMDIsOrganization;CredMetaData;_NEW;CredMetaData;_NEW"
+          ,TXT "{EX} InsPair;orgCredMD;Organization;", SRC I, TXT ";CredMetaData;_NEW"
+)
+ROLE ExecEngine MAINTAINS "DelAtom and DelPair credMDIsOrganization"
+RULE "DelAtom and DelPair credMDIsOrganization": credMDIsOrganization |- orgCredMD~;orgCredMD
+VIOLATION (TXT "{EX} DelAtom;CredMetaData;", SRC I)
+--#ENDIF
+
+VIEW OrganizationCredInlezen: Organization
+{ "formAtom"       : I                      -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "OrganizationData" -- API through which credential data is read/issued
+, "credentialType" : TXT "Organization"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"     -- API through which credential MetaData is read
+, "credmdAtom"     : orgCredMD              -- Atom where MetaData is read
+, "buttonText"     : TXT "Organisatiegegevens inlezen"
+} HTML TEMPLATE "View-CredentialVerifyRequest.html" ENDVIEW
+
+VIEW OrganizationCredUitgeven : Organization
+{ "formAtom"       : I                      -- Atom where data will be read to/issued from
+, "ifcId"          : TXT "OrganizationData" -- API through which credential data is read/issued
+, "credentialType" : TXT "Organization"     -- name of data object in the namespace of this application
+, "credmdIfcId"    : TXT "CredMetaData"     -- API through which credential MetaData is read
+, "credmdAtom"     : orgCredMD              -- Atom where MetaData is read
+, "buttonText"     : TXT "Organization credential"
+} HTML TEMPLATE "View-CredentialIssueRequest.html" ENDVIEW
+
+API "OrganizationData": I[Organization] CRud BOX
+    [ "orgRef":      orgRef cRUd
+    , "orgFullName": orgFullName cRUd
+    , "orgLogoURL":  orgLogoURL cRUd
+--#IF IncludeOndernemingAPI
+    , "ondernemingsgegevens": I[Onderneming] API "OndernemingData"
+--#ENDIF
+    ]
+
+ENDCONTEXT

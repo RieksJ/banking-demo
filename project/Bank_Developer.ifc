@@ -6,10 +6,10 @@ VIEW "ORGID": Organization { "1": TXT "Id=", "2": I } ENDVIEW
 -- This is *the* entry point for developers. It should only be compiled for the main application itself.
 -- To allow other applications to provide their own developer's entry point, this section is not compiled by default.
 
-INCLUDE "../SIAMv4/SIAM_Developer.ifc" --# [ "NoMainDevIfc" ]     -- Includes interfaces [SESSION_Dev] and [SIAM_Dev]
-INCLUDE "../Generic/Generic_Developer.ifc" --# [ "NoMainDevIfc" ] -- Includes interface [NatuurlijkPersoon_Dev]
-INCLUDE "../PhysicalAddr/DutchAddr_Developer.ifc" --# [ "NoMainDevIfc" ] -- Includes interface [Addrs_Dev]
-INCLUDE "../KvK/KvK_Developer.ifc" --# [ "NoMainDevIfc" ] -- Includes interface [Ondernemingen_Dev] and [Onderneming_Dev]
+--INCLUDE "./SIAMv4/SIAM_Developer.ifc" --# [ "NoMainDevIfc" ]     -- Includes interfaces [SESSION_Dev] and [SIAM_Dev]
+--INCLUDE "./Generic/Generic_Developer.ifc" --# [ "NoMainDevIfc" ] -- Includes interface [NatuurlijkPersoon_Dev]
+--INCLUDE "./PhysicalAddr/DutchAddr_Developer.ifc" --# [ "NoMainDevIfc" ] -- Includes interface [Addrs_Dev]
+--INCLUDE "./KvK/KvK_Developer.ifc" --# [ "NoMainDevIfc" ] -- Includes interface [Ondernemingen_Dev] and [Onderneming_Dev]
 
 POPULATION ifcTitle CONTAINS [ ("[Dev]", "Developer/Debugger Portaal") ]
 INTERFACE "[Dev]": "_SESSION" cRud BOX <RAW form>

@@ -1,0 +1,21 @@
+{
+    "payload": {
+        "rekeningnummer": "NL75ASNB0046644008",
+        "persoonsgegevens": {
+            "geslachtsnaam": "Klaassen",
+            "roepnaam": "Jan",
+            "eerstevoornaam": "Johannes",
+            "voornamen": "Johannes",
+            "geboortedatum": "1961-01-01",
+            "geboorteplaats": "Amsterdam",
+            "geboorteland": "Nederland",
+            "geslacht": "M"
+        },
+        "ondernemingsgegevens": {
+            "handelsnaam": "Poppenkastspeler 'Klaassen'",
+            "rechtsvorm": "Eenmanszaak",
+            "kvknummer": "98765432",
+            "btwnummer": "NL592035226B01"
+        }
+    }
+}

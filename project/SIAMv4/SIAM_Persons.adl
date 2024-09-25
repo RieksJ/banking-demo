@@ -1,0 +1,62 @@
+CONTEXT "Persons" IN ENGLISH
+-- This file specifies the Concept `Person` (and `PersonRef`) and the rules that govern them.
+-- Attributes that Persons may have can be defined separately.
+
+--[Persons are Parties and Actors; they 'own' themselves]
+-- See file: "SIAM_Basics.adl" for details about the underlying concepts.
+
+CONCEPT Person "A human being regarded as an individual" "Oxford English Dictionary"
+
+CLASSIFY Person ISA Party
+CLASSIFY Person ISA Actor
+
+--[Person Reference]
+CONCEPT PersonRef "a text string that can be used to refer to a person" -- Context isn't fixed, so it need not be [INJ]
+REPRESENT PersonRef TYPE ALPHANUMERIC
+
+-- Note that `personRef`is **NOT** INJ because applications that use SIAM cannot 'undo' that constraint.
+-- However, file "SIAMv4_Module-example.adl" includes the [UNI]-rules for them by default (which can be commented out)
+personRef :: Person * PersonRef [UNI] -- The human readable name to refer to, but not necessarily identify, the person
+CLASSIFY PersonRef ISA ActorRef -- make sure 'Ref's can be copied to one another
+CLASSIFY PersonRef ISA PartyRef -- make sure 'Ref's can be copied to one another
+
+-- The following rule is commented out because it is prohibitively performance-consuming
+-- RULE "The PersonRef, PartyRef and ActorRef of a Person must all be the same":
+--     I[Person] /\ (personRef;personRef~ \/ actorRef;actorRef~ \/ partyRef;partyRef~)
+--     |- (personRef /\ I[AorP];actorRef;I[IdentRef] /\ partyRef);V[IdentRef*Person]
+RULE "PersonRef and ActorRef must be the same": personRef[Person*PersonRef]~;actorRef[Actor*ActorRef] |- I[IdentRef]
+RULE "PersonRef and PartyRef must be the same": personRef[Person*PersonRef]~;partyRef[Party*PartyRef] |- I[IdentRef]
+-- Note that this implies that for every Person, its ActorRef = its PartyRef.
+
+ROLE ExecEngine MAINTAINS "Every Person is owned by itself"
+RULE "Every Person is owned by itself": I[Person] |- isOwnedBy
+VIOLATION (TXT "{EX} InsPair;isOwnedBy;AorP;", SRC I[AorP], TXT ";Party;", TGT I[Party])
+
+ROLE ExecEngine MAINTAINS "InsPair partyRef from personRef"
+RULE "InsPair partyRef from personRef": I[Person];partyRef[Party*PartyRef] |- partyRef[Party*PartyRef]
+VIOLATION (TXT "{EX} InsPair;partyRef;Party;", SRC I, TXT ";PartyRef;", TGT I[PartyRef])
+
+ROLE ExecEngine MAINTAINS "InsPair actorRef from personRef"
+RULE "InsPair actorRef from personRef": I[Person];actorRef[Actor*ActorRef] |- actorRef
+VIOLATION (TXT "{EX} InsPair;actorRef;Actor;", SRC I, TXT ";ActorRef;", TGT I[ActorRef])
+
+--[Personal properties for Accounts and Sessions]
+-- EQUIVALENCE accIsPersonal[Account] [PROP] == (accParty;I[AorP] /\ accActor;I[AorP]);I[Person]
+accIsPersonal :: Account * Account [PROP] MEANING "Property: the account is associated with a Person (i.e., accActor and accParty refer to the same AoP)."
+ROLE ExecEngine MAINTAINS "Eqv-InsPair accIsPersonal"
+RULE "Eqv-InsPair accIsPersonal": I /\ accParty;I[AorP];accActor~ |- accIsPersonal
+VIOLATION (TXT "{EX} InsPair;accIsPersonal;Account;", SRC I, TXT ";Account;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair accIsPersonal"
+RULE "Eqv-DelPair accIsPersonal": accIsPersonal |- I /\ accParty;I[AorP];accActor~
+VIOLATION (TXT "{EX} DelPair;accIsPersonal;Account;", SRC I, TXT ";Account;", TGT I)
+
+-- EQUIVALENCE sessionIsPersonal[SESSION] [PROP] == sessionIsUser /\ sessionAccount;accIsPersonal;sessionAccount~
+sessionIsPersonal :: SESSION * SESSION [PROP] MEANING "Property: the session's user is a Person (i.e., it is both the `sessionActor` and `sessionParty`."
+ROLE ExecEngine MAINTAINS "Eqv-InsPair sessionIsPersonal"
+RULE "Eqv-InsPair sessionIsPersonal": sessionIsUser /\ sessionAccount;accIsPersonal;sessionAccount~ |- sessionIsPersonal
+VIOLATION (TXT "{EX} InsPair;sessionIsPersonal;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+ROLE ExecEngine MAINTAINS "Eqv-DelPair sessionIsPersonal"
+RULE "Eqv-DelPair sessionIsPersonal": sessionIsPersonal |- sessionIsUser /\ sessionAccount;accIsPersonal;sessionAccount~
+VIOLATION (TXT "{EX} DelPair;sessionIsPersonal;SESSION;", SRC I, TXT ";SESSION;", TGT I)
+
+ENDCONTEXT

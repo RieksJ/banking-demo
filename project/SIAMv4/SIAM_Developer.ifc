@@ -1,0 +1,137 @@
+CONTEXT "DeveloperIfc" IN ENGLISH
+
+POPULATION Yes CONTAINS [ "Yes" ]
+VIEW PrsYesNo: Person       { "Yes": V[Person*Yes]       } ENDVIEW
+VIEW OrgYesNo: Organization { "Yes": V[Organization*Yes] } ENDVIEW
+
+--[Optional: Main Developer Entry Point]
+
+--#IFNOT NoMainDevIfc
+-- This is *the* entry point for developers. It should only be compiled for the TText test application itself.
+-- To allow other applications to provide their own developer's entry point, this section is not compiled by default.
+
+INTERFACE "[Dev]": "_SESSION";V[SESSION*ONE] INTERFACE "[SIAM_Dev]"
+
+--#ENDIF
+
+INTERFACE "[SIAM_Dev]": I[ONE] cRud BOX <TABS>
+   [ "SESSION": I INTERFACE "[SIAM_SESSION_Dev]"
+   , "Accounts": I INTERFACE "[SIAM_Accounts_Dev]"
+   , "Parties": I INTERFACE "[SIAM_Parties_Dev]"
+   , "Actors": I INTERFACE "[SIAM_Actors_Dev]"
+   , "Persons": I INTERFACE "[SIAM_Persons_Dev]"
+   , "Organizations": I INTERFACE "[SIAM_Organizations_Dev]"
+   , "Roles": I INTERFACE "[SIAM_Roles_Dev]"
+   ]
+
+INTERFACE "[SIAM_SESSION_Dev]": V[ONE*SESSION];"_SESSION" cRud BOX
+[ "Session ID": I cRud
+, "Session properties": I cRud BOX <TABLE>
+   [ "AllowedRoles": sessionAllowedRoles cRud
+   , "ActiveRoles": sessionActiveRoles cRud
+   , "IsAnon": sessionIsAnon cRud
+   , "IsUser": sessionIsUser cRud
+   , "IfcsSet": sessionIfcsSet cRud
+   , "AnonIfc": sessionAnonIfc cRud
+   , "ActorIfc": sessionUserIfc cRud
+   ]
+, "Account": I cRud BOX <TABLE>
+   [ "Account": sessionAccount cRud
+   , "OrigAcc": sessionOrigAcc cRud
+   , "Userid": sessionUserid cRud
+   , "ActorRef": sessionActor <ActorAndOwner>
+   , "PartyRef": sessionPartyRef
+   ]
+, "Actor, Party": I cRud BOX <TABLE>
+   [ "ActorRef": sessionActor cRud <ActorAndOwner>
+   , "Actor": sessionActor cRud
+   , "PartyRef": sessionPartyRef cRud
+   , "Party": sessionParty cRud
+   ]
+, "Org, Person": I cRud BOX <TABLE>
+   [  "Personal": (sessionActor;I[AorP] /\ sessionParty;I[AorP]);V[Person*Yes]
+   ,  "Organizational": (sessionActor;I[AorP] /\ sessionParty;I[AorP]);(I[AorP]-I[Person]);V[AorP*Yes]
+   ,  "I_Am": V[SESSION*I_Am] cRud <ActorAndOwner>
+   ]
+]
+
+VIEW AccountId: Account { "id": I } ENDVIEW
+INTERFACE "[SIAM_Accounts_Dev]": V[ONE*Account] cRud BOX <TABLE sortable>
+   [ "id": I[Account] cRud <AccountId>
+   , "Userid": accUserid cRud
+-- , "Password": accPassword cRud
+   , "ActorRef": accActorRef cRud
+   , "Actor": accActor cRud
+   , "PartyRef": accPartyRef cRud
+   , "Party": accParty cRud
+   , "IsInitialized": accIsInitialized cRud
+   , "IsActive": accIsActive cRud
+   , "IsPrsnl": accIsPersonal cRud
+   , "SysAdm": accIsSysAdmin cRud
+   , "PartyAdmin": accIsPartyAdmin cRud
+   , "UserIfc": accUserIfc cRud
+   , "IsGodAccount": accIsGodAccount cRud
+   , "AllowedRoles": accAllowedRoles cRud
+   , "DefaultRoles": accDefaultRoles cRud
+   ]
+
+VIEW PartyId: Party { "id": I } ENDVIEW
+INTERFACE "[SIAM_Parties_Dev]": V[ONE*Party] cRud BOX <TABLE sortable>
+   [ "id": I[Party] cRud <PartyId>
+   , "PartyRef": partyRef cRud
+   , "Owns (Actors)": isOwnedBy~;I[Actor] cRud
+   , "Owns (Parties)": isOwnedBy~;I[Party] cRud
+   , "Person?": I[Person] cRud <PrsYesNo>
+   , "Organization?": I[Organization] cRud <OrgYesNo>
+   ]
+
+VIEW ActorId: Actor { "id": I } ENDVIEW
+INTERFACE "[SIAM_Actors_Dev]": V[ONE*Actor] cRud BOX <TABLE sortable>
+   [ "id": I[Actor] cRud <ActorId>
+   , "Actor (owned)": I[Actor] cRud <ActorAndOwner>
+   , "ActorRef": actorRef cRud
+   , "Owned by (Party)": isOwnedBy cRud
+   , "Person?": I[Person] cRud <PrsYesNo>
+   ]
+
+VIEW PersonId: Person { "id": I } ENDVIEW
+INTERFACE "[SIAM_Persons_Dev]": V[ONE*Person] cRud BOX <TABLE sortable>
+   [ "id": I[Person] cRud <PersonId>
+   , "PersonRef": personRef cRud
+   , "FirstName": personFirstName cRud
+   , "MiddleName": personMiddleName cRud
+   , "LastName": personLastName cRud
+   , "Initials": personInitials cRud
+   , "FullName": personFullName cRud
+   , "Personal Account": (accActor;I[Person] /\ accParty;I[Person])~ cRud
+   , "Non-Personal Acc": (accActor;I[Person] -  accParty;I[Person])~ cRud
+   ]
+
+VIEW OrganizationId: Organization { "id": I } ENDVIEW
+INTERFACE "[SIAM_Organizations_Dev]": V[ONE*Organization] cRud BOX <TABLE sortable>
+   [ "id": I[Organization] cRud <OrganizationId>
+   , "Ref": orgRef cRud
+   , "FullName": orgFullName cRud
+   , "Accounts": accParty~ cRud
+   ]
+
+VIEW RoleId: Role { "id": I } ENDVIEW
+INTERFACE "[SIAM_Roles_Dev]": I[ONE] cRud BOX <FORM>
+   [ "Roles": V[ONE*Role];(I-systemRole) cRud BOX <TABLE sortable>
+      [ "id": I[Role] cRud <RoleId>
+--    , "systemRole": systemRole cRud
+      , "Allowed (Account)": accAllowedRoles~ cRud
+      , "Default (Account)": accDefaultRoles~ cRud
+      , "Allowed (SESSION)": sessionAllowedRoles~;"_SESSION";V[SESSION*Yes] cRud
+      , "Active (SESSION)": sessionActiveRoles~;"_SESSION";V[SESSION*Yes] cRud
+      ]
+   , "System Roles": V[ONE*Role];systemRole cRud BOX <TABLE sortable>
+      [ "id": I[Role] cRud <RoleId>
+--    , "systemRole": systemRole cRud
+      , "Allowed (Account)": accAllowedRoles~ cRud
+      , "Default (Account)": accDefaultRoles~ cRud
+      , "Allowed (SESSION)": sessionAllowedRoles~;"_SESSION";V[SESSION*Yes] cRud
+      , "Active (SESSION)": sessionActiveRoles~;"_SESSION";V[SESSION*Yes] cRud
+      ]
+   ]
+ENDCONTEXT

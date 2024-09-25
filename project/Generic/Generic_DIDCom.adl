@@ -1,0 +1,140 @@
+CONTEXT "DIDCom"
+{- DIDCom is a datacommunication protocol between two digital components,
+   that enables both to determine whether or not the other is an Agent for some Party.
+   This script enables the registration of Parties that can communicate with us using DIDCom,
+   as well as setting up new, or connetecting them to existing Accounts.
+   For the DIDCom specs, see **[reference needed]**
+   For the DID specs, see file "https://w3c-ccg.github.io/did-spec/"
+-}
+
+--**ToDO: Het moet mogelijk zijn een endpoint te publiceren waar Agents een DIDCom sessie mee kunnen opstarten,
+-- hetzij door en nieuw DIDPair af te spreken, hetzij door een bestaand DIDPair te gebruiken.
+-- In beide gevallen levert dat hier een nieuw DIDPair op, waar geen invitation token in zit.
+-- We moeten nog nadenken over wat we hier zoal mee willen kunnen doen, en daar dan code voor schrijven.
+-- Denk bijv. aan:
+-- - een endpoint waar een gebruiker zich kan registreren. In dat geval moet het bestaan van zo'n DIDPair hier
+--   leiden tot een sessie waarin gegevens worden verzameld over de user, er een account wordt aangemaakt,
+--   waar het DIDPair dan aan gehangen wordt.
+-- - een endpoint waar een gebruiker een specifieke attestatie komt ophalen. In dat geval moet het DIDPair
+--   een Account aanwijzen, en moeten we iets doen zodat de gevraagde attesatie weer netjes wordt uitgegeven.
+
+CONCEPT DID "distributed identifier, according to the W3C (draft) standard" "https://w3c-ccg.github.io/did-spec/"
+CONCEPT DIDDoc "document that stores the public key material, endpoints etc. associated with a DID" "https://w3c-ccg.github.io/did-spec/"
+CONCEPT SKsDoc "document that stores the secret counterparts of what is in a DIDDoc"
+
+CLASSIFY DID ISA URI
+
+REPRESENT URI, DIDDoc, SKsDoc TYPE BIGALPHANUMERIC
+
+--[DID Relations (DIDPairs)]
+{- The idea with DIDs is that they come about in pairs, thus modeling 'party-relations'.
+A party-relation is a relation between Parties (business entities, i.e. individuals and/or organizations).
+In such a relation, Agents of each Party generate a DID (and associated DID Documents, key-material etc.),
+and in a secure exchange mechanism ensure that their counterpart receives this DID and will be able to
+derefernce that DID to the associated DID Document. This enables both parties to henceforth set up trusted
+(encrypted) communications between themselves. -}
+
+PURPOSE CONCEPT DIDPair
+{+Because we foresee that multiple Agents of a single party will need to communicate with our
+server(s) using a single Account, we need to model business relations with a separate concept+}
+CONCEPT DIDPair "a pair of (peer)DIDs that together represent a business relation"
+
+didpFName    :: DIDPair * FriendlyName [INJ,UNI] -- Name by which this DIDPair can be referred (or: the 'other side' can be referred)
+didpMineDID  :: DIDPair * DID      [INJ,UNI,TOT] -- My DIDs must be unique in my context
+didpMineDOC  :: DIDPair * DIDDoc   [INJ,UNI,TOT] -- My DIDDocs must be unique in my context
+didpMineSKs  :: DIDPair * SKsDoc   [INJ,UNI,TOT] -- My Secret keys (signing, decryption, ...) must be unique in my context
+didpYourDID  :: DIDPair * DID          [UNI,TOT] -- 'Your DID's are NOT unique in my context, because I do not control their values
+didpYourDOC  :: DIDPair * DIDDoc       [UNI,TOT] -- Consequently, 'Your DIDDoc's can also NOT relied upon to be unique in my context
+didpInvToken :: DIDPair * InvToken [INJ,UNI]     -- InvToken that triggered the creation of this DIDPair
+
+--[Login support]
+PURPOSE API GetDIDPair
+{+ DIDPair-Login will be arranged in a way similar to the Social ID logins that use UIDs.
+This means there will be an API with custom (PHP) code that does the DIDPair-Logins.
+This API will (and should only) be called by the SSI-Proxy that handles all SSI/DID protocols.
+To do so, the proxy needs to access the DIDPair record associated with the user's DIDPair connection setup request.
+The `GetDIDPair` api accomodates for this
++}
+
+API GetDIDPair: didpMineDID~ cRud BOX
+  [ "didpFName": didpFName cRud
+  , "didpMineDID": didpMineDID cRud
+  , "didpMineDOC": didpMineDOC cRud
+  , "didpMineSKs": didpMineSKs cRud
+  , "didpYourDID": didpYourDID cRud
+  , "didpYourDOC": didpYourDOC cRud
+  , "didpInvToken": didpInvToken cRud
+  , "account": accDIDPair~;accIsActive cRud
+  ]
+
+--[Registration of a DIDPair]
+-- The idea is to generate a random number (called invitation token),
+-- and send that to an Agent (app) of the user by means of a QR-Code.
+-- Then, as DIDPairs may be created through an API, we look for a DIDPair
+-- that has the invitation token so that we can associated it with
+-- either the sessionAccount to which the token was associated
+-- or the SESSION in which it was generated.
+
+CONCEPT Invitation "short-lived, randomly generated data that can be used to establish a DIDPair"
+invToken       :: Invitation * InvToken [INJ,UNI,TOT] -- randomly generated data
+invExpDateTime :: Invitation * DateTime [UNI] -- time beyond which the Invitation is no longer valid
+
+REPRESENT InvToken TYPE ALPHANUMERIC
+
+VIEW DIDPairInvitation : Invitation
+  { "proxy": V;myDIDPairRegURL -- TXT "http://localhost/CZ/public/api/v1"
+  , "token": invToken
+  , "exp": invExpDateTime
+  } HTML TEMPLATE "View-DIDPairInvitation.html" ENDVIEW
+
+API "RegisterDIDPair": I[DIDPair] CRud BOX
+  [ "mineDID": didpMineDID cRUd
+  , "mineDOC": didpMineDOC cRUd
+  , "mineSKs": didpMineSKs cRUd
+  , "yourDID": didpYourDID cRUd
+  , "yourDOC": didpYourDOC cRUd
+  , "invToken": didpInvToken cRUd
+  ]
+
+-- If a DIDPair is created that contains a `didpMineDID` that is already in an existing DIDPair
+-- then such DIDPairs should be the same, and hence be merged. This could happen easily, because
+-- the API simply creates DIDPairs without looking at what already exists.
+ROLE ExecEngine MAINTAINS "Ensure there are no duplicate DIDPairs"
+RULE "Ensure there are no duplicate DIDPairs": didpMineDID;didpMineDID~ |- I
+VIOLATION (TXT "{EX} MrgAtoms;DIDPair;", SRC I, TXT ";DIDPair;", TGT I)
+
+--[Register a DIDPair to an Account]
+-- When a DIDPair is created while a user is logged in, it is associated with the sessionAccount.
+accInvitation :: Account * Invitation [UNI]
+accDIDPair    :: Account * DIDPair -- DIDPair(s) that can be used to negotiate a (session)Account
+
+ROLE ExecEngine MAINTAINS "logged-in users can associate their Account with a DIDPair" -- Also if the Account is already associated with 1 or more DIDPairs
+RULE "logged-in users can associate their Account with a DIDPair":
+  I /\ sessionAccount~;sessionAccount |- accInvitation;accInvitation~
+VIOLATION (TXT "{EX} InsAtom;Invitation"
+          ,TXT "{EX} InsPair;accInvitation;Account;", SRC I, TXT ";Invitation;_NEW"
+          ,TXT "{EX} InsPair;invToken;Invitation;_NEW;InvToken;{php}bin2hex(random_bytes(40))"
+          ,TXT "{EX} InsPair;invExpDateTime;Invitation;_NEW;DateTime;{php}date(DATE_ISO8601, strtotime ('+1 hour'))"
+          )
+ROLE ExecEngine MAINTAINS "a non-sessionAccount has no invite"
+RULE "a non-sessionAccount has no invite": accInvitation |- sessionAccount~;V
+VIOLATION (TXT "{EX} DelAtom;Invitation;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Matching DIDPairs and Accounts"
+RULE "Matching DIDPairs and Accounts": accInvitation;invToken;didpInvToken~ |- accDIDPair
+VIOLATION (TXT "{EX} InsPair;accDIDPair;Account;", SRC I, TXT ";DIDPair;", TGT I
+          ,TXT "{EX} DelAtom;Invitation;", SRC accInvitation
+          )
+
+POPULATION IfcText CONTAINS [ "DIDPair is not yet registered" ]
+POPULATION isInvisible CONTAINS [ ("InviteDIDPairRegistration", "InviteDIDPairRegistration") ]
+INTERFACE "InviteDIDPairRegistration": sessionAccount cRud BOX <RAW table>
+  [ "Invitation" : accInvitation cRud <DIDPairInvitation> -- This produces the QR-Code with the invitation token
+  , "DIDPairs": accDIDPair cRud BOX <TABLE> -- Show the DIDPairs that are associated with the account
+    [ "My DID": didpMineDID cRud
+    , "Ur DID": didpYourDID cRud
+    , "Name": didpFName cRUd -- Name that I can use to 'call' You (as in: 'I will be calling <didpFName>')
+    ]
+  ]
+
+ENDCONTEXT

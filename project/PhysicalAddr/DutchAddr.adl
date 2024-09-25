@@ -1,0 +1,163 @@
+CONTEXT "DutchAddr" IN ENGLISH
+PURPOSE CONTEXT "DutchAddr"
+{+The DutchAddr context provides a specialization of PhyicalAddrs for Dutch addresses, that help to
+- create (formatted) address labels;
+- establish equivalence between them.
+
+Specifications related to (working with) Dutch addresses can be found at
+- https://www.postnl.nl/versturen/brief-of-kaart-versturen/hoe-verstuur-ik-een-brief-of-kaart/brief-adresseren/
+- https://www.geobasisregistraties.nl/binaries/basisregistraties-ienm/documenten/publicatie/2017/05/12/catalogus-bag-2018-v0.99/Catalogus+BAG+2018+-+Openbaar+concept+v0.99.pdf
+
+If you want to have parts of Dutch addresses automatically filled in,
+please use the extension in file "./DutchAddrAutofill.adl".
++}
+
+INCLUDE "./PhysicalAddr.adl"
+
+CONCEPT DutchAddr "PhysicalAddr within the Netherlands"
+CLASSIFY DutchAddr ISA PhysicalAddr
+
+daddrID            :: DutchAddr * DutchAddrID   [UNI]  -- ID van het kadaster voor individuele adressen
+daddrStreet        :: DutchAddr * Street        [UNI]  -- (GBA:Straatnaam) Hiddemaheerd (or 'Postbus', 'Antwoordnummer')
+daddrStreetNr      :: DutchAddr * StreetNr      [UNI]  -- (GBA:Huisnummer) 113 (=huisnummer)
+daddrStrNrLetter   :: DutchAddr * StrNrLetter   [UNI]  -- (GBA:Huisletter) a (=huisletter)
+daddrStrNrAddition :: DutchAddr * StrNrAddition [UNI]  -- (GBA:Huisnummertoevoeging) 7 (=huisnummertoevoeging)
+daddrStrAddition   :: DutchAddr * AddrLine      [UNI]  -- bijvoorbeeld: 3e verdieping, kamer 314
+daddrZIPCode       :: DutchAddr * ZIPCode       [UNI]  -- (GBA:Postcode) 9737KX
+daddrCity          :: DutchAddr * City          [UNI]  -- (GBA:Woonplaatsnaam) Roden (=plaats)
+daddrMunicipality  :: DutchAddr * Municipality  [UNI]  -- Noordenveld (=gemeente)
+daddrProvince      :: DutchAddr * Province      [UNI]  -- Drenthe (=provincie)
+
+{- De GBA heeft ook:
+ - Naam openbare ruimte (veelal gelijk aan de straatnam)
+ - Aanduiding bij huisnummer (mogelijke waarden: 'by' (=bij) of 'to' (=tegenover), bijv. voor woonboten)
+ - Identificatiecode verblijfplaats
+ - Identificatiecode nummeraanduiding
+-}
+
+REPRESENT DutchAddrID, Street, StreetNr, StrNrLetter, StrNrAddition TYPE ALPHANUMERIC
+REPRESENT ZIPCode, City, Municipality, Province TYPE ALPHANUMERIC
+
+daddrIsClean :: DutchAddr * DutchAddr [PROP] -- The fields of the address are sufficiently filled in to create address lines
+ROLE ExecEngine MAINTAINS "InsPair daddrIsClean"
+RULE "InsPair daddrIsClean":
+   I[DutchAddr] /\ daddrStreetNr;daddrStreetNr~
+   /\ ( (daddrStreet;daddrStreet~ /\ daddrCity;daddrCity~) \/ daddrZIPCode;daddrZIPCode~ )
+|- daddrIsClean
+VIOLATION (TXT "{EX} InsPair;daddrIsClean;DutchAddr;", SRC I, TXT ";DutchAddr;", TGT I)
+ROLE ExecEngine MAINTAINS "DelPair daddrIsClean"
+RULE "DelPair daddrIsClean":
+   daddrIsClean
+|- I[DutchAddr] /\ daddrStreetNr;daddrStreetNr~
+   /\ ( (daddrStreet;daddrStreet~ /\ daddrCity;daddrCity~) \/ daddrZIPCode;daddrZIPCode~ )
+VIOLATION (TXT "{EX} DelPair;daddrIsClean;DutchAddr;", SRC I, TXT ";DutchAddr;", TGT I)
+
+--[AddrLine 1 = Street + number; we don't do 'Postbus' (yet?), nor 'Antwoordnummer']
+
+dac1DutchAddr     :: DAC1 * DutchAddr  [UNI,TOT]
+dac1Street        :: DAC1 * Street        [UNI] -- Hiddemaheerd
+dac1StreetNr      :: DAC1 * StreetNr      [UNI] -- 113 (=huisnummer)
+dac1StrNrAddition :: DAC1 * StrNrAddition [UNI] -- 7 (=huisnummertoevoeging)
+dac1StrNrLetter   :: DAC1 * StrNrLetter   [UNI] -- a (=huisletter)
+
+ROLE ExecEngine MAINTAINS "Auto create DAC1"
+RULE "Auto create DAC1": daddrIsClean |- dac1DutchAddr~;dac1DutchAddr
+VIOLATION (TXT "{EX} InsAtom;DAC1"
+          ,TXT "{EX} InsPair;dac1DutchAddr;DAC1;_NEW;DutchAddr;", SRC I
+          )
+ROLE ExecEngine MAINTAINS "Auto delete DAC1"
+RULE "Auto delete DAC1": I[DAC1] |- dac1DutchAddr;dac1DutchAddr~
+VIOLATION (TXT "{EX} DelAtom;DAC1;", SRC I)
+
+ROLE ExecEngine MAINTAINS "Auto create addrLine1 for DutchAddr"
+RULE "Auto create addrLine1 for DutchAddr":
+   dac1DutchAddr;daddrIsClean -- Note: 'clean' only implies that a StreetNr exists, other fields may be _NULL
+|- V;addrLine1~
+   /\ dac1Street <> daddrStreet~
+   /\ dac1StreetNr;daddrStreetNr~
+   /\ dac1StrNrAddition <> daddrStrNrAddition~
+   /\ dac1StrNrLetter <> daddrStrNrLetter~
+VIOLATION (TXT "{EX} DelPair;dac1Street;DAC1;", SRC I, TXT ";Street;", SRC dac1Street  -- this ensures the rule is fixed when TGT daddrZIPCode is _NULL
+          ,TXT "{EX} InsPair;dac1Street;DAC1;", SRC I, TXT ";Street;", TGT daddrStreet
+          ,TXT "{EX} InsPair;dac1StreetNr;DAC1;", SRC I, TXT ";StreetNr;", TGT daddrStreetNr
+          ,TXT "{EX} DelPair;dac1StrNrAddition;DAC1;", SRC I, TXT ";StrNrAddition;", SRC dac1StrNrAddition -- this ensures the rule is fixed when TGT daddrStrNrAddition is _NULL
+          ,TXT "{EX} InsPair;dac1StrNrAddition;DAC1;", SRC I, TXT ";StrNrAddition;", TGT daddrStrNrAddition
+          ,TXT "{EX} DelPair;dac1StrNrLetter;DAC1;", SRC I, TXT ";StrNrLetter;", SRC dac1StrNrLetter -- this ensures the rule is fixed when TGT daddrStrNrLetter is _NULL
+          ,TXT "{EX} InsPair;dac1StrNrLetter;DAC1;", SRC I, TXT ";StrNrLetter;", TGT daddrStrNrLetter
+          ,TXT "{EX}_;InsPair_;addrLine1_;PhysicalAddr_;", TGT I[PhysicalAddr], TXT "_;AddrLine_;"
+-- Use `\"` rather than `'` in the following {php} code, because an address may contain `'`-chars
+          ,TXT "{php}concatext(\"", TGT daddrStreet
+                     , TXT "\",\"", TGT daddrStreetNr
+                     , TXT "\",\"", TGT daddrStrNrAddition
+                     , TXT "\",\"", TGT daddrStrNrLetter
+                     , TXT "\")"    --)" -- These comments are needed to fix syntax coloring in VSCode
+          )
+ROLE ExecEngine MAINTAINS "Auto delete addrLine1 for DutchAddr"
+RULE "Auto delete addrLine1 for DutchAddr": dac1DutchAddr;addrLine1 |- dac1DutchAddr;daddrIsClean;addrLine1
+VIOLATION (TXT "{EX} DelPair;addrLine1;PhysicalAddr;", SRC dac1DutchAddr, TXT ";AddrLine;", TGT I)
+
+--[addrLine2 is reserved for any additions to addrLine1, e.g. in verzamelgebouwen, voor '3e verdieping, kamer 314'0
+ROLE ExecEngine MAINTAINS "Auto create addrLine2 for DutchAddr"
+RULE "Auto create addrLine2 for DutchAddr": daddrStrAddition |- addrLine2
+VIOLATION (TXT "{EX} InsPair;addrLine2;PhysicalAddr;", SRC I[PhysicalAddr], TXT ";AddrLine;", TGT I)
+ROLE ExecEngine MAINTAINS "Auto delete addrLine2 for DutchAddr"
+RULE "Auto delete addrLine2 for DutchAddr": I[DutchAddr];addrLine2 |- daddrStrAddition
+VIOLATION (TXT "{EX} DelPair;addrLine2;PhysicalAddr;", SRC I[PhysicalAddr], TXT ";AddrLine;", TGT I)
+
+--[addrLine3 = ZIPCode + City]
+dac3DutchAddr :: DAC3 * DutchAddr [UNI,TOT]
+dac3ZIPCode   :: DAC3 * ZIPCode   [UNI] -- 9737KX
+dac3City      :: DAC3 * City      [UNI] -- Roden (=plaats)
+
+ROLE ExecEngine MAINTAINS "Auto create DAC3" -- A DAC3 exists IFF the DutchAddr is 'complete'
+RULE "Auto create DAC3": daddrIsClean |- dac3DutchAddr~;dac3DutchAddr
+VIOLATION (TXT "{EX} InsAtom;DAC3"
+          ,TXT "{EX} InsPair;dac3DutchAddr;DAC3;_NEW;DutchAddr;", SRC I
+          )
+ROLE ExecEngine MAINTAINS "Auto delete DAC3" -- A DAC3 exists IFF the DutchAddr is 'complete'
+RULE "Auto delete DAC3": dac3DutchAddr |- dac3DutchAddr;daddrIsClean
+VIOLATION (TXT "{EX} DelAtom;DAC3;", SRC I)
+
+ROLE ExecEngine MAINTAINS "Auto create addrLine3 for DutchAddr"
+RULE "Auto create addrLine3 for DutchAddr":
+-- Note that a 'complete' DutchAddr may not have either a ZIPCode or a City
+   dac3DutchAddr;daddrIsClean
+|- V;addrLine3~
+   /\ dac3ZIPCode <> daddrZIPCode~
+   /\ dac3City <> daddrCity~
+VIOLATION (TXT "{EX} DelPair;dac3ZIPCode;DAC3;", SRC I, TXT ";ZIPCode;", SRC dac3ZIPCode -- this ensures the rule is fixed when TGT daddrZIPCode is _NULL
+          ,TXT "{EX} InsPair;dac3ZIPCode;DAC3;", SRC I, TXT ";ZIPCode;", TGT daddrZIPCode
+          ,TXT "{EX} DelPair;dac3City;DAC3;", SRC I, TXT ";City;", SRC dac3City  -- this ensures the rule is fixed when TGT daddrCity is _NULL
+          ,TXT "{EX} InsPair;dac3City;DAC3;", SRC I, TXT ";City;", TGT daddrCity
+          ,TXT "{EX}_;InsPair_;addrLine3_;PhysicalAddr_;", TGT I[PhysicalAddr], TXT "_;AddrLine_;"
+-- Use `\"` rather than `'` in the following {php} code, because an address may contain `'`-chars
+          ,TXT "{php}concatext(\"", TGT daddrZIPCode
+                     , TXT "\",\"", TGT daddrCity
+                     , TXT "\")"    --)" -- These comments are needed to fix syntax coloring in VSCode
+          )
+ROLE ExecEngine MAINTAINS "Auto delete addrLine3"
+RULE "Auto delete addrLine3": dac3DutchAddr;addrLine3 |- dac3DutchAddr;daddrIsClean;addrLine3
+VIOLATION (TXT "{EX} DelPair;addrLine3;PhysicalAddr;", SRC dac3DutchAddr, TXT ";AddrLine;", TGT I)
+
+--[Equivalence of DutchAddr]
+
+daddrIsAtSamePhysicalLocationAsDutchAddr :: DutchAddr * DutchAddr [SYM,TRN] -- RFX is auto-created
+ROLE ExecEngine MAINTAINS "RFX[daddrIsAtSamePhysicalLocationAsDutchAddr]"
+RULE "RFX[daddrIsAtSamePhysicalLocationAsDutchAddr]": I[DutchAddr] |- daddrIsAtSamePhysicalLocationAsDutchAddr
+VIOLATION (TXT "{EX} InsPair;daddrIsAtSamePhysicalLocationAsDutchAddr;DutchAddr;", SRC I, TXT ";DutchAddr;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Determine address equivalence"
+RULE "Determine address equivalence":
+   I[DutchAddr] /\ daddrStreetNr;daddrStreetNr~
+   /\ ( (daddrStreet;daddrStreet~ /\ daddrCity;daddrCity~) \/ daddrZIPCode;daddrZIPCode~ )
+|- daddrIsAtSamePhysicalLocationAsDutchAddr
+VIOLATION (TXT "{EX} InsPair;daddrIsAtSamePhysicalLocationAsDutchAddr;DutchAddr;", SRC I, TXT ";DutchAddr;", TGT I)
+
+ROLE ExecEngine MAINTAINS "Determine address non-equivalence"
+RULE "Determine address non-equivalence":
+   I[DutchAddr];daddrIsAtSamePhysicalLocationAsDutchAddr-I[DutchAddr] |-
+   I[DutchAddr] /\ daddrStreetNr;daddrStreetNr~
+   /\ ( (daddrStreet;daddrStreet~ /\ daddrCity;daddrCity~) \/ daddrZIPCode;daddrZIPCode~ )
+VIOLATION (TXT "{EX} DelPair;daddrIsAtSamePhysicalLocationAsDutchAddr;DutchAddr;", SRC I, TXT ";DutchAddr;", TGT I)
+
+ENDCONTEXT

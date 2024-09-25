@@ -1,0 +1,62 @@
+CONTEXT PhysicalAddr
+
+CONCEPT PhysicalAddr "way of referring to a physical location where physical mail/parcels can be delivered and/or people may work or live"
+CONCEPT AddrLine "part of an address that is meant to be represented on a single line"
+CONCEPT AddrLabel "text, representing a PhysicalAddr, that can be printed on a label (envelope, parcel, etc.)"
+-- The idea of AddrLines is that you can create labels with them.
+-- Not printing empty AddrLines enables standard mappings with different ontologies
+addrLine1 :: PhysicalAddr * AddrLine  [UNI] -- Usually street and number, or POBox and number
+addrLine2 :: PhysicalAddr * AddrLine  [UNI] -- e.g. an addition such as 3rd floor, room 14)
+addrLine3 :: PhysicalAddr * AddrLine  [UNI] -- e.g. zipcode, city (postal code + locality)
+addrLine4 :: PhysicalAddr * AddrLine  [UNI] -- e.g. region
+addrLine5 :: PhysicalAddr * AddrLine  [UNI] -- e.g. country
+addrLabel :: PhysicalAddr * AddrLabel [UNI]
+
+REPRESENT AddrLine TYPE ALPHANUMERIC
+REPRESENT AddrLabel TYPE BIGALPHANUMERIC
+
+--[Compute AddrLabel for PhysicalAddr]
+
+VIEW AddrLabel: PhysicalAddr DEFAULT { "label": addrLabel } ENDVIEW --!BUG: de `PHP_EOL` werkt kennelijk niet in views
+
+calblAddr :: AddrLblComputation * PhysicalAddr [UNI,TOT]
+calblArg1 :: AddrLblComputation * AddrLine [UNI]
+calblArg2 :: AddrLblComputation * AddrLine [UNI]
+calblArg3 :: AddrLblComputation * AddrLine [UNI]
+calblArg4 :: AddrLblComputation * AddrLine [UNI]
+calblArg5 :: AddrLblComputation * AddrLine [UNI]
+
+ROLE ExecEngine MAINTAINS "Auto create AddrLblComputation"
+RULE "Auto create AddrLblComputation": I[PhysicalAddr] |- calblAddr~;calblAddr
+VIOLATION (TXT "{EX} InsAtom;AddrLblComputation"
+          ,TXT "{EX} InsPair;calblAddr;AddrLblComputation;_NEW;PhysicalAddr;", SRC I
+          )
+ROLE ExecEngine MAINTAINS "Auto delete AddrLblComputation"
+RULE "Auto delete AddrLblComputation": I[AddrLblComputation] |- calblAddr;calblAddr~
+VIOLATION (TXT "{EX} DelAtom;AddrLblComputation;", SRC I)
+
+ROLE ExecEngine MAINTAINS "Auto compute AddrLabel"
+RULE "Auto compute AddrLabel":
+-- Note that a PhysicalAddr may not have any of the addrLines
+  calblAddr |-  calblArg1 <> addrLine1~
+             /\ calblArg2 <> addrLine2~
+             /\ calblArg3 <> addrLine3~
+             /\ calblArg4 <> addrLine4~
+VIOLATION (TXT "{EX} DelPair;calblArg1;AddrLblComputation;", SRC I, TXT ";AddrLine;", SRC calblArg1 -- this ensures the rule is fixed when TGT addrLine1 is _NULL
+          ,TXT "{EX} InsPair;calblArg1;AddrLblComputation;", SRC I, TXT ";AddrLine;", TGT addrLine1
+          ,TXT "{EX} DelPair;calblArg2;AddrLblComputation;", SRC I, TXT ";AddrLine;", SRC calblArg2 -- this ensures the rule is fixed when TGT addrLine2 is _NULL
+          ,TXT "{EX} InsPair;calblArg2;AddrLblComputation;", SRC I, TXT ";AddrLine;", TGT addrLine2
+          ,TXT "{EX} DelPair;calblArg3;AddrLblComputation;", SRC I, TXT ";AddrLine;", SRC calblArg3 -- this ensures the rule is fixed when TGT addrLine3 is _NULL
+          ,TXT "{EX} InsPair;calblArg3;AddrLblComputation;", SRC I, TXT ";AddrLine;", TGT addrLine3
+          ,TXT "{EX} DelPair;calblArg4;AddrLblComputation;", SRC I, TXT ";AddrLine;", SRC calblArg4 -- this ensures the rule is fixed when TGT addrLine4 is _NULL
+          ,TXT "{EX} InsPair;calblArg4;AddrLblComputation;", SRC I, TXT ";AddrLine;", TGT addrLine4
+          ,TXT "{EX}_;InsPair_;addrLabel_;PhysicalAddr_;", TGT I[PhysicalAddr], TXT "_;AddrLabel_;"
+-- Use `\"` rather than `'` in the following {php} code, because an address may contain `'`-chars
+          ,TXT "{php}concatlines(\"",  TGT addrLine1
+                        , TXT "\",\"", TGT addrLine2
+                        , TXT "\",\"", TGT addrLine3
+                        , TXT "\",\"", TGT addrLine4
+                        , TXT "\")"    --)" -- These comments are needed to fix syntax coloring in VSCode
+          )
+
+ENDCONTEXT
